@@ -225,6 +225,9 @@ def _recommend(
         fresh = days_in <= pb.NEW_LEAD_DAYS or a.last_outbound is not None
         if days_in <= 14 and fresh:
             _, key, step = pb.plan_a_step(days_in)
+            if a.last_outbound is None:
+                # Never actually contacted: start Plan A at step 1, whatever day it is.
+                key, step = "1", "not contacted yet — call now, then text 1"
             channel = "Email" if key == "email" else "Call"
             return Action(
                 code="plan_a",

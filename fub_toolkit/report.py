@@ -5,6 +5,7 @@ Rendered as Markdown (to read), CSV (to print / dialer) or JSON.
 """
 
 import csv
+import re
 import io
 import json
 from dataclasses import dataclass, field
@@ -148,14 +149,14 @@ def _lead_block(n: int, i: LeadInsight, today: date, full: bool = True) -> List[
         lines.append(f"- **Decision makers:** lead + {', '.join(c.decision_makers)}")
     if full and a.summary_lines:
         lines.append("- **Recent:**")
-        lines.extend(f"  - {s}" for s in a.summary_lines[:3])
+        lines.extend(f"  - {s}" for s in a.summary_lines[:2])
     for t in i.overdue_tasks:
         lines.append(
             f"- **Overdue task:** {t.name} ({(today - (t.due or today)).days}d)"
         )
     if act.talking_points:
         lines.append("- **Ask / cover:**")
-        lines.extend(f"  - {p}" for p in act.talking_points[:5])
+        lines.extend(f"  - {p}" for p in act.talking_points[:3])
     if act.voicemail:
         lines.append(f"- **Voicemail:** “{act.voicemail}”")
     if act.text_draft:
@@ -227,7 +228,7 @@ def render_markdown(r: DailyReport) -> str:
         if not section.items:
             out += ["Nobody due.", ""]
             continue
-        if sl.number == 4:
+        if sl.number in (1, 4):
             by_ad: Dict[str, LeadInsight] = {}
             for i in section.items:
                 n += 1
@@ -245,13 +246,15 @@ def render_markdown(r: DailyReport) -> str:
                 out.append(
                     f"{n}. **{i.lead.name}** · {i.lead.phone} · {i.campaign} · {days}d old · {tries} — {i.action.label}"
                 )
-                by_ad.setdefault(f"{i.campaign}|{i.action.code}", i)
+                by_ad.setdefault(f"{i.campaign}|{i.action.label.split(':')[-1]}", i)
             out += ["", "**Scripts for this list** ({name} = their first name):", ""]
             for i in by_ad.values():
                 act = i.action
 
                 def generic(msg: str, first: str = i.lead.first_name) -> str:
-                    return msg.replace(f"Hi {first},", "Hi {name},")
+                    if not first:
+                        return msg
+                    return re.sub(rf"\b{re.escape(first)}\b", "{name}", msg)
 
                 out.append(f"- *{i.campaign} — {act.label}*")
                 if act.voicemail:

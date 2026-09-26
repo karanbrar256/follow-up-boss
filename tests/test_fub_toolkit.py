@@ -355,6 +355,26 @@ class TestEngine:
         mike = by_name(report, "Mike Patel").criteria
         assert mike.acres_label == "~5 acres"  # "3 acreages" is not "3 acres"
 
+    def test_never_contacted_new_lead_starts_plan_a_at_text_1(self) -> None:
+        lead = make_lead(
+            tags=["2.5M Langley Acreages-copy"],
+            created=(AS_OF - timedelta(days=5)).isoformat(),
+        )
+        act = build_insight(lead, AS_OF).action
+        assert act.code == "plan_a" and "not contacted yet" in act.label
+        assert "Langley acreage list" in act.text_draft  # text 1, not text 3
+
+    def test_html_notes_are_read_as_text(self) -> None:
+        n = Note.from_fub(
+            {
+                "id": 1,
+                "personId": 1,
+                "body": "<p>Wants <b>5 acres</b> in Aldergrove</p>",
+                "isHtml": True,
+            }
+        )
+        assert n.body == "Wants 5 acres in Aldergrove"
+
     def test_zero_to_three_month_tag_sets_timeline(self) -> None:
         i = build_insight(make_lead(tags=["0-3mo"]), AS_OF)
         assert i.criteria.timeline_months == 3

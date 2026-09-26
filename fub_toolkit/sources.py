@@ -138,7 +138,7 @@ class LiveReadOnlySource:
         max_people: int = 1000,
         page_size: int = 100,
         max_pages: int = 20,
-        per_request_pause: float = 0.2,
+        per_request_pause: float = 0.1,
         env: Optional[Dict[str, str]] = None,
     ) -> None:
         env = dict(os.environ if env is None else env)
@@ -189,32 +189,26 @@ class LiveReadOnlySource:
         return out[:limit]
 
     def load(self) -> Bundle:
-        bundle: Bundle = {key: [] for key in BUNDLE_KEYS}
-        people = self._paged("people", "people", {"sort": "-updated"}, self.max_people)
-        bundle["people"] = people
-        bundle["tasks"] = self._paged(
-            "tasks", "tasks", {}, self.page_size * self.max_pages
-        )
-        bundle["appointments"] = self._paged(
-            "appointments", "appointments", {}, self.page_size
-        )
+        """Bulk-fetch every collection; only text messages need one call per lead.
+
+        FUB's /textMessages requires a personId, so texts are fetched per active
+        (non-Trash/Closed) lead. Everything else comes back in a handful of pages.
+        """
         from .playbook import EXCLUDED_STAGES
 
-        for person in people:
+        bundle: Bundle = {key: [] for key in BUNDLE_KEYS}
+        big = self.page_size * self.max_pages
+        bundle["people"] = self._paged("people", "people", {}, self.max_people)
+        for endpoint in ("tasks", "notes", "calls", "events", "appointments"):
+            bundle[endpoint] = self._paged(endpoint, endpoint, {}, big)
+        for person in bundle["people"]:
             pid = person.get("id")
             if pid is None or str(person.get("stage", "")).lower() in EXCLUDED_STAGES:
-                continue  # Trash/Closed: no need to pull their history
-            for endpoint, key in (
-                ("notes", "notes"),
-                ("calls", "calls"),
-                ("textMessages", "textmessages"),
-                ("events", "events"),
-            ):
-                resp = self._get(
-                    endpoint, {"personId": pid, "limit": 25, "sort": "-created"}
-                )
-                items = resp.get(key) or resp.get(endpoint) or []
-                bundle[endpoint].extend(items)
+                continue  # Trash/Closed: no need to pull their texts
+            resp = self._get("textMessages", {"personId": pid, "limit": 25})
+            bundle["textMessages"].extend(
+                resp.get("textmessages") or resp.get("textMessages") or []
+            )
         return bundle
 
 

@@ -53,6 +53,18 @@ def parse_date(value: Any) -> Optional[date]:
     return dt.astimezone(LOCAL_TZ).date() if dt else None
 
 
+def _plain_text(text: str) -> str:
+    """Strip HTML (FUB stores some notes as HTML) down to readable text."""
+    if "<" not in text:
+        return text
+    import html
+    import re
+
+    text = re.sub(r"(?i)<br\s*/?>|</p>|</div>|</li>", "\n", text)
+    text = re.sub(r"<[^>]+>", " ", text)
+    return re.sub(r"[ \t]+", " ", html.unescape(text)).strip()
+
+
 def _truthy(value: Any) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in {"1", "true", "yes"}
@@ -105,7 +117,7 @@ class Note:
             id=int(raw.get("id", 0)),
             person_id=raw.get("personId"),
             subject=str(raw.get("subject") or ""),
-            body=str(raw.get("body") or ""),
+            body=_plain_text(str(raw.get("body") or "")),
             created=parse_dt(raw.get("created")),
         )
 

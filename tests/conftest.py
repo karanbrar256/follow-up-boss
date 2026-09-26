@@ -18,6 +18,32 @@ from follow_up_boss.pagination import PondFilterPaginator, SmartPaginator
 load_dotenv()
 
 
+@pytest.fixture(autouse=True)
+def _block_live_follow_up_boss(monkeypatch):
+    """Keep the test suite away from a real Follow Up Boss account.
+
+    Some older tests call the real API (and even create deals). In a cloud
+    environment that injects FUB credentials, that would write to live client
+    data. Real network calls to followupboss.com fail unless
+    FUB_ALLOW_LIVE_TESTS=1 is set deliberately. Mocked calls are unaffected.
+    """
+    if os.getenv("FUB_ALLOW_LIVE_TESTS") == "1":
+        return
+    import requests
+
+    original = requests.sessions.Session.request
+
+    def guarded(self, method, url, *args, **kwargs):
+        if "followupboss.com" in str(url):
+            raise RuntimeError(
+                "Blocked a real Follow Up Boss API call from the test suite. "
+                "Set FUB_ALLOW_LIVE_TESTS=1 only against a sandbox account."
+            )
+        return original(self, method, url, *args, **kwargs)
+
+    monkeypatch.setattr(requests.sessions.Session, "request", guarded)
+
+
 @pytest.fixture(scope="session")
 def client():
     """Create a Follow Up Boss API client for testing with session scope."""
