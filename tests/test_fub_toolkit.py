@@ -468,6 +468,18 @@ class TestSources:
         with pytest.raises(ReadOnlyViolation):
             client._request("POST", "people")
 
+    def test_proxy_credential_mode_sends_no_auth(self) -> None:
+        from unittest.mock import MagicMock, patch
+
+        resp = MagicMock(status_code=200, headers={})
+        resp.json.return_value = {"people": []}
+        with patch("follow_up_boss.client.requests.request", return_value=resp) as req:
+            make_read_only_client(api_key=None)._get("people")
+        assert "auth" not in req.call_args.kwargs
+        with patch("follow_up_boss.client.requests.request", return_value=resp) as req:
+            make_read_only_client(api_key="k")._get("people")
+        assert req.call_args.kwargs["auth"] == ("k", "")
+
     def test_live_source_only_issues_gets(self, bundle) -> None:  # type: ignore[no-untyped-def]
         calls: List[str] = []
 

@@ -88,7 +88,11 @@ The plan is a scheduled cloud run each morning. It:
 It needs two settings in the cloud environment (environment menu → Edit):
 
 1. **Network access:** allow `api.followupboss.com`.
-2. **Environment variable:** `FOLLOW_UP_BOSS_API_KEY`, set to your key from FUB **Admin → API**. Never paste the key into a chat.
+2. **The key**, either way:
+   - **Recommended: environment API credential.** Allowed website `api.followupboss.com`; header `Authorization`, prefix `Basic`, value = base64 of `YOUR_KEY:`. The proxy adds it to each request, so the key never enters the cloud machine. Leave `FOLLOW_UP_BOSS_API_KEY` unset and the toolkit sends no credentials of its own.
+   - **Or** an environment variable `FOLLOW_UP_BOSS_API_KEY` with your key from FUB **Admin → API**.
+
+   Never paste the key into a chat.
 
 The first live run is a supervised check against FUB. After that, `scripts/morning_run.sh` runs on the schedule.
 

@@ -60,8 +60,36 @@ class JsonFileSource:
         return {key: list(data.get(key, [])) for key in BUNDLE_KEYS}
 
 
+class _patch_auth_off:
+    """Temporarily make ``requests.request`` drop the ``auth`` argument."""
+
+    def __init__(self, requests_module: Any) -> None:
+        self.mod = requests_module
+
+    def __enter__(self) -> None:
+        self.original = self.mod.request
+
+        def request(*args: Any, **kw: Any) -> Any:
+            kw.pop("auth", None)
+            return self.original(*args, **kw)
+
+        self.mod.request = request
+
+    def __exit__(self, *exc: Any) -> None:
+        self.mod.request = self.original
+
+
+PROXY_KEY_PLACEHOLDER = "added-by-credential-proxy"
+
+
 def make_read_only_client(api_key: Optional[str] = None, **kwargs: Any) -> Any:
-    """Build an SDK client whose write methods are hard-disabled."""
+    """Build an SDK client whose write methods are hard-disabled.
+
+    With no ``api_key``, the client sends no credentials of its own and relies
+    on the cloud environment's credential proxy to add them for
+    api.followupboss.com (the key then never enters this machine).
+    """
+    proxy_auth = not api_key
     from follow_up_boss.client import FollowUpBossApiClient
 
     class ReadOnlyClient(FollowUpBossApiClient):
@@ -70,7 +98,14 @@ def make_read_only_client(api_key: Optional[str] = None, **kwargs: Any) -> Any:
                 raise ReadOnlyViolation(
                     f"Toolkit is read-only; blocked {method} {endpoint}"
                 )
-            return super()._request(method, endpoint, *args, **kw)
+            if not proxy_auth:
+                return super()._request(method, endpoint, *args, **kw)
+            # The cloud environment's credential proxy adds the Authorization
+            # header, so the key never enters this machine. Send no auth here.
+            import requests as _requests
+
+            with _patch_auth_off(_requests):
+                return super()._request(method, endpoint, *args, **kw)
 
         def _post(self, *args: Any, **kw: Any) -> Any:
             raise ReadOnlyViolation("Toolkit is read-only; POST blocked")
@@ -81,7 +116,7 @@ def make_read_only_client(api_key: Optional[str] = None, **kwargs: Any) -> Any:
         def _delete(self, *args: Any, **kw: Any) -> Any:
             raise ReadOnlyViolation("Toolkit is read-only; DELETE blocked")
 
-    return ReadOnlyClient(api_key=api_key, **kwargs)
+    return ReadOnlyClient(api_key=api_key or PROXY_KEY_PLACEHOLDER, **kwargs)
 
 
 class LiveReadOnlySource:
