@@ -1,13 +1,17 @@
 """
-Fictional Follow Up Boss data for the prototype.
+Fictional Follow Up Boss data shaped like Karan's real account.
 
-All names, phone numbers (555 range) and emails (example.com) are made up.
-Timestamps are generated relative to ``as_of`` so the demo always looks like
-"this morning" and every recommendation path is exercised.
+Same stages, ad tags and kinds of leads (Cloverdale homes ad, Langley acreage
+ad, land/industrial investors, a long unreached pile), but every name, phone
+number (555 range), email (example.com) and address is made up. Timestamps are
+generated relative to ``as_of`` so the demo always looks like "this morning".
 """
 
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List
+
+HOMES_TAG = "1.5M Langley Homes-copy-copy"
+ACREAGE_TAG = "2.5M Langley Acreages-copy"
 
 
 def build_mock_bundle(as_of: datetime) -> Dict[str, List[Dict[str, Any]]]:
@@ -26,9 +30,9 @@ def build_mock_bundle(as_of: datetime) -> Dict[str, List[Dict[str, Any]]]:
         first: str,
         last: str,
         stage: str,
-        source: str,
         created: str,
         phone: str,
+        tags: List[str],
         **extra: Any,
     ) -> Dict[str, Any]:
         rec = {
@@ -37,7 +41,7 @@ def build_mock_bundle(as_of: datetime) -> Dict[str, List[Dict[str, Any]]]:
             "lastName": last,
             "name": f"{first} {last}",
             "stage": stage,
-            "source": source,
+            "source": extra.pop("source", "Facebook"),
             "created": created,
             "phones": [{"value": phone, "type": "mobile", "isPrimary": 1}],
             "emails": [
@@ -46,7 +50,7 @@ def build_mock_bundle(as_of: datetime) -> Dict[str, List[Dict[str, Any]]]:
                     "isPrimary": 1,
                 }
             ],
-            "tags": extra.pop("tags", []),
+            "tags": tags,
         }
         rec.update(extra)
         return rec
@@ -57,382 +61,514 @@ def build_mock_bundle(as_of: datetime) -> Dict[str, List[Dict[str, Any]]]:
             "Priya",
             "Sandhu",
             "Hot Prospect",
-            "Facebook - Langley Townhomes",
             ago(21),
             "604-555-0101",
-            background="Q: When are you looking to buy? A: 0-3 months\nQ: Are you pre-approved? A: Yes",
-            tags=["Facebook", "Listings Sent"],
+            [HOMES_TAG, "0-3mo", "Listing Alert"],
         ),
         person(
             102,
             "Jason",
             "Tran",
             "Lead",
-            "Facebook - Surrey Condos Under $600k",
             ago(hours=0.7),
             "778-555-0102",
+            [HOMES_TAG],
             background="Q: When are you looking to buy? A: 0-3 months\nQ: Are you pre-approved? A: No",
         ),
         person(
             103,
             "Maria",
             "Gonzalez",
-            "Lead",
-            "Facebook - Abbotsford Detached Homes",
-            ago(hours=26),
+            "Attempted Contact",
+            ago(2, 1),
             "604-555-0103",
-            background="Q: When are you looking to buy? A: 3-6 months",
+            [ACREAGE_TAG],
         ),
         person(
             104,
             "Daniel",
             "Kim",
-            "Lead",
-            "Facebook - First-Time Buyer Guide",
-            ago(3),
+            "Attempted Contact",
+            ago(4, 1),
             "778-555-0104",
+            [HOMES_TAG],
         ),
         person(
             105,
             "Aman",
             "Gill",
-            "Active Client",
-            "Facebook - Fraser Valley Acreages",
+            "Appointment Set",
             ago(40),
             "604-555-0105",
-            tags=["Listings Sent"],
+            [ACREAGE_TAG, "Listing Alert"],
         ),
         person(
             106,
             "Sarah",
             "Thompson",
-            "Lead",
-            "Facebook - Chilliwack New Listings",
-            ago(12),
+            "Spoke with Customer",
+            ago(30),
             "604-555-0106",
+            [HOMES_TAG],
         ),
         person(
             107,
             "Kevin",
             "O'Brien",
-            "Lead",
-            "Facebook - Coquitlam Condos",
+            "Hot Prospect",
             ago(15),
             "778-555-0107",
+            [HOMES_TAG, "0-3mo"],
         ),
         person(
             108,
             "Harpreet",
             "Dhillon",
             "Hot Prospect",
-            "Facebook - Surrey Homes with Suites",
             ago(9),
             "604-555-0108",
+            [ACREAGE_TAG, "0-3mo"],
         ),
         person(
             109,
             "Emily",
             "Chen",
             "Active Client",
-            "Facebook - Langley Townhomes",
             ago(30),
             "778-555-0109",
-            tags=["Listing Alert"],
+            [HOMES_TAG, "Listing Alert"],
         ),
         person(
             110,
             "Mike",
             "Patel",
             "Active Client",
-            "Facebook - Abbotsford Detached Homes",
             ago(45),
             "604-555-0110",
-            tags=["Listings Sent"],
+            [ACREAGE_TAG, "Listings Sent"],
         ),
-        person(
-            111,
-            "Lisa",
-            "Wong",
-            "Nurture",
-            "Facebook - Home Value Report",
-            ago(120),
-            "778-555-0111",
-        ),
+        person(111, "Lisa", "Wong", "Nurture", ago(120), "778-555-0111", [HOMES_TAG]),
         person(
             112,
             "Tom",
             "Anderson",
-            "Lead",
-            "Facebook - Maple Ridge Townhomes",
-            ago(20),
+            "Attempted Contact",
+            ago(30),
             "604-555-0112",
+            [HOMES_TAG],
         ),
         person(
             113,
             "Rachel",
             "Martin",
-            "Lead",
-            "Facebook - White Rock Condos",
+            "Attempted Contact",
             ago(10),
             "778-555-0113",
+            [HOMES_TAG],
         ),
-        person(114, "Chris", "Lee", "Pending", "Referral", ago(90), "604-555-0114"),
         person(
-            115, "Grace", "Nguyen", "Past Client", "Referral", ago(700), "778-555-0115"
+            114,
+            "Chris",
+            "Lee",
+            "Under Contract",
+            ago(90),
+            "604-555-0114",
+            [],
+            source="Referral",
+        ),
+        person(
+            115,
+            "Grace",
+            "Nguyen",
+            "Past Client",
+            ago(700),
+            "778-555-0115",
+            [],
+            source="Referral",
         ),
         person(
             116,
             "Brandon",
             "Singh",
-            "Active Client",
-            "Facebook - Langley Townhomes",
+            "Spoke with Customer",
             ago(18),
             "604-555-0116",
-            tags=["Listing Alert"],
+            [HOMES_TAG, "Listing Alert"],
+        ),
+        person(117, "Nina", "Kaur", "Nurture", ago(60), "778-555-0117", [ACREAGE_TAG]),
+        person(
+            118,
+            "Raj",
+            "Bains",
+            "Hot Prospect",
+            ago(25),
+            "604-555-0118",
+            ["Investor-Commercial", "Nimar-Handoff"],
+            source="Nimar handoff",
         ),
         person(
-            117,
-            "Nina",
-            "Kaur",
-            "Nurture",
-            "Facebook - Mission Rancher Homes",
+            119,
+            "Alyn",
+            "Brooks",
+            "Attempted Contact",
+            ago(20),
+            "778-555-0119",
+            [HOMES_TAG, "Do Not Contact"],
+        ),
+        person(
+            120,
+            "Pam",
+            "Grewal",
+            "Active Listing",
             ago(60),
-            "778-555-0117",
+            "604-555-0120",
+            ["Seller-Potential"],
+            source="Referral",
+        ),
+        person(
+            121, "Jas", "Toor", "Sphere", ago(400), "778-555-0121", [], source="Sphere"
         ),
     ]
+    # The unreached pile: Aug–Sep ad leads that were never called, plus a few
+    # tried once long ago. More than the 10-a-day cap on purpose.
+    for n in range(12):
+        tried = n % 4 == 3
+        people.append(
+            person(
+                130 + n,
+                f"Unreached{n + 1}",
+                "Lead",
+                "Attempted Contact" if tried else "Lead",
+                ago(12 + n * 4),
+                f"604-555-02{n:02d}",
+                [ACREAGE_TAG if n % 2 else HOMES_TAG],
+            )
+        )
 
     notes: List[Dict[str, Any]] = [
         {
             "id": 1,
             "personId": 101,
             "created": ago(5),
-            "subject": "Qualification call",
-            "body": "Spoke with Priya. Renting in Willoughby, lease ends in 2 months. Wants a 3 bed townhouse in Langley/Willoughby, "
-            "budget up to $950k, pre-approved with RBC. Husband also on title and wants a double garage. Sent 4 listings after the call.",
+            "subject": "Call",
+            "body": "Spoke with Priya. Renting in Newton, lease ends in 2 months. Wants a 4 bed detached with a basement suite in Cloverdale or Clayton, "
+            "up to $1.45M, pre-approved. Husband also deciding. Sent 4 listings after the call.",
         },
         {
             "id": 2,
             "personId": 105,
             "created": ago(8),
             "subject": "Acreage search",
-            "body": "Met with Aman and his wife. Looking for 2-5 acres in Maple Ridge or Mission, detached with a shop, up to $2.2M, "
-            "cash from sale of their Burnaby home — need to sell our Burnaby house first. Timeline 3-6 months.",
+            "body": "Met with Aman and his wife. Want 2-5 acres in South Langley or Glen Valley to live on, detached home with a shop, up to $2.4M. "
+            "Need to sell our Burnaby house first. Timeline 3-6 months. Pre-approved.",
         },
         {
             "id": 3,
             "personId": 106,
-            "created": ago(6),
+            "created": ago(16),
             "subject": "Intro call",
-            "body": "Talked to Sarah briefly — interested in Chilliwack, has two kids, asked to call back later this week to go over details.",
+            "body": "Talked to Sarah briefly — interested in Cloverdale, has two kids, asked to call back to go over details.",
         },
         {
             "id": 4,
             "personId": 107,
             "created": ago(4),
             "subject": "Call notes",
-            "body": "Spoke with Kevin. First-time buyer, renting in Burnaby. Wants a 2 bed condo in Coquitlam near SkyTrain, "
-            "budget $650k-$750k, 3-6 months. Not pre-approved yet, hasn't talked to a broker.",
+            "body": "Spoke with Kevin. First-time buyer, renting in Burnaby. Wants a 3 bed townhouse in Clayton, "
+            "budget $850k-$950k, 0-3 months. Not pre-approved yet, hasn't talked to a broker.",
         },
         {
             "id": 5,
             "personId": 108,
             "created": ago(2),
-            "subject": "Qualification call",
-            "body": "Had a great call with Harpreet. Needs a detached home with a legal suite (mortgage helper) in Surrey — Fleetwood or Cloverdale. "
-            "5 bed, up to $1.6M, pre-approved. Living with parents, wants to move in 2-3 months.",
+            "subject": "Acreage call",
+            "body": "Had a great call with Harpreet. Wants 5-10 acres in South Langley to build 2 houses for the family. "
+            "Up to $2.4M, pre-approved, 1-3 months. Asked about subdivision — told him we'd confirm with the Township/ALC.",
         },
         {
             "id": 6,
             "personId": 109,
             "created": ago(10),
             "subject": "Buyer consult",
-            "body": "Met with Emily. 3 bed townhouse in Langley (Willoughby or Walnut Grove), up to $900k, pre-approved, 1-3 months. "
-            "Set up listing alert and sent 5 listings.",
+            "body": "Met with Emily. 3 bed townhouse in Clayton or Cloverdale, up to $900k, pre-approved, 1-3 months. Set up listing alert and sent 5 listings.",
         },
         {
             "id": 7,
             "personId": 110,
             "created": ago(3),
             "subject": "Showing recap",
-            "body": "Showed Mike 3 homes in Abbotsford. Liked the rancher on Marshall Rd but wants a bigger yard. "
-            "Detached, 4 bed, up to $1.3M, pre-approved, selling nothing (renting). Timeline 2-4 months.",
+            "body": "Showed Mike 3 acreages in Aldergrove. Liked the 5 acre on 272 St but wants a bigger shop for his trucks. "
+            "Up to $2.2M, pre-approved, renting. Timeline 2-4 months.",
         },
         {
             "id": 8,
             "personId": 111,
-            "created": ago(60),
+            "created": ago(50),
             "subject": "Nurture",
-            "body": "Spoke with Lisa. Just browsing for now, maybe next year. Owns a condo in New Westminster, curious about moving to a townhouse in Burnaby.",
+            "body": "Spoke with Lisa. Just browsing for now, maybe next year. Owns a condo in New Westminster, curious about a townhouse in Cloverdale.",
         },
         {
             "id": 9,
             "personId": 113,
             "created": ago(3),
             "subject": "Call",
-            "body": "Rachel said she's working with another realtor already and is just on a lot of ad lists.",
+            "body": "Rachel said she's working with another realtor already.",
         },
         {
             "id": 10,
             "personId": 115,
-            "created": ago(100),
-            "subject": "Anniversary",
-            "body": "Called Grace for her 2-year home anniversary. Happy in the South Surrey house.",
+            "created": ago(40),
+            "subject": "Check-in",
+            "body": "Called Grace. Happy in the South Surrey house.",
         },
         {
             "id": 11,
             "personId": 116,
-            "created": ago(2),
+            "created": ago(3),
             "subject": "Check-in",
-            "body": "Spoke with Brandon. Still looking for a 3 bed townhouse in Langley, up to $875k, pre-approved, 3-6 months. Liked two from the alert.",
+            "body": "Spoke with Brandon. 3 bed townhouse in Cloverdale, up to $875k, pre-approved, 6-9 months. Liked two from the alert.",
         },
         {
             "id": 12,
             "personId": 117,
             "created": ago(5),
             "subject": "Nurture call",
-            "body": "Talked to Nina. Wants a rancher in Mission in about 12 months after her retirement. Budget around $900k. Not in a rush.",
+            "body": "Talked to Nina. Wants 2 acres in Aldergrove in about 12 months after retirement. Budget around $1.8M. Not in a rush.",
         },
         {
             "id": 13,
-            "personId": 112,
-            "created": ago(19),
-            "subject": "Attempt",
-            "body": "Left voicemail. Didn't speak to him.",
+            "personId": 118,
+            "created": ago(9),
+            "subject": "Nimar handoff",
+            "body": "Spoke with Raj. Wants 20-40 acres of income-producing industrial land, truck yard near Deltaport. "
+            "Budget $5M-$7M, $3M down. Timeline 3-6 months.",
+        },
+        {
+            "id": 14,
+            "personId": 120,
+            "created": ago(4),
+            "subject": "Listing",
+            "body": "Pam's listing went live. 2 showings so far.",
+        },
+        {
+            "id": 15,
+            "personId": 121,
+            "created": ago(35),
+            "subject": "Coffee",
+            "body": "Coffee with Jas. Doing well, might know someone looking in Langley.",
+        },
+        {
+            "id": 16,
+            "personId": 114,
+            "created": ago(4),
+            "subject": "Deal",
+            "body": "Subject removal due next week. Waiting on strata docs.",
         },
     ]
 
-    calls: List[Dict[str, Any]] = [
-        {
-            "id": 201,
-            "personId": 101,
-            "created": ago(5),
-            "isIncoming": 0,
-            "outcome": "Interested",
-            "duration": 840,
-        },
-        {
-            "id": 202,
-            "personId": 101,
-            "created": ago(2),
-            "isIncoming": 0,
-            "outcome": "No Answer",
-            "duration": 0,
-        },
-        {
-            "id": 203,
-            "personId": 104,
-            "created": ago(3),
-            "isIncoming": 0,
-            "outcome": "No Answer",
-            "duration": 0,
-        },
-        {
-            "id": 205,
-            "personId": 105,
-            "created": ago(8),
-            "isIncoming": 0,
-            "outcome": "Interested",
-            "duration": 1200,
-        },
-        {
-            "id": 206,
-            "personId": 106,
-            "created": ago(6),
-            "isIncoming": 0,
-            "outcome": "Interested",
-            "duration": 180,
-        },
-        {
-            "id": 207,
-            "personId": 107,
-            "created": ago(4),
-            "isIncoming": 0,
-            "outcome": "Interested",
-            "duration": 600,
-        },
-        {
-            "id": 208,
-            "personId": 108,
-            "created": ago(2),
-            "isIncoming": 0,
-            "outcome": "Interested",
-            "duration": 900,
-        },
-        {
-            "id": 209,
-            "personId": 109,
-            "created": ago(10),
-            "isIncoming": 0,
-            "outcome": "Interested",
-            "duration": 1500,
-        },
-        {
-            "id": 210,
-            "personId": 109,
-            "created": ago(5),
-            "isIncoming": 0,
-            "outcome": "Left Message",
-            "duration": 25,
-        },
-        {
-            "id": 211,
-            "personId": 110,
-            "created": ago(3),
-            "isIncoming": 0,
-            "outcome": "Interested",
-            "duration": 300,
-        },
-        {
-            "id": 212,
-            "personId": 111,
-            "created": ago(60),
-            "isIncoming": 0,
-            "outcome": "Interested",
-            "duration": 420,
-        },
-        {
-            "id": 213,
-            "personId": 113,
-            "created": ago(3),
-            "isIncoming": 0,
-            "outcome": "Not Interested",
-            "duration": 90,
-        },
-        {
-            "id": 214,
-            "personId": 115,
-            "created": ago(100),
-            "isIncoming": 0,
-            "outcome": "Interested",
-            "duration": 600,
-        },
-        {
-            "id": 215,
-            "personId": 116,
-            "created": ago(2),
-            "isIncoming": 0,
-            "outcome": "Interested",
-            "duration": 480,
-        },
-        {
-            "id": 216,
-            "personId": 117,
-            "created": ago(5),
-            "isIncoming": 0,
-            "outcome": "Interested",
-            "duration": 360,
-        },
-    ] + [
-        {
-            "id": 220 + i,
-            "personId": 112,
-            "created": ago(19 - i * 2.5),
-            "isIncoming": 0,
-            "outcome": "No Answer",
-            "duration": 0,
-        }
-        for i in range(4)
-    ]
+    calls: List[Dict[str, Any]] = (
+        [
+            {
+                "id": 201,
+                "personId": 101,
+                "created": ago(5),
+                "isIncoming": 0,
+                "outcome": "Interested",
+                "duration": 840,
+            },
+            {
+                "id": 202,
+                "personId": 101,
+                "created": ago(2),
+                "isIncoming": 0,
+                "outcome": "No Answer",
+                "duration": 0,
+            },
+            {
+                "id": 203,
+                "personId": 103,
+                "created": ago(2),
+                "isIncoming": 0,
+                "outcome": "No Answer",
+                "duration": 0,
+            },
+            {
+                "id": 204,
+                "personId": 103,
+                "created": ago(1),
+                "isIncoming": 0,
+                "outcome": "No Answer",
+                "duration": 0,
+            },
+            {
+                "id": 205,
+                "personId": 105,
+                "created": ago(8),
+                "isIncoming": 0,
+                "outcome": "Interested",
+                "duration": 1200,
+            },
+            {
+                "id": 206,
+                "personId": 106,
+                "created": ago(16),
+                "isIncoming": 0,
+                "outcome": "Interested",
+                "duration": 180,
+            },
+            {
+                "id": 207,
+                "personId": 107,
+                "created": ago(4),
+                "isIncoming": 0,
+                "outcome": "Interested",
+                "duration": 600,
+            },
+            {
+                "id": 208,
+                "personId": 108,
+                "created": ago(2),
+                "isIncoming": 0,
+                "outcome": "Interested",
+                "duration": 900,
+            },
+            {
+                "id": 209,
+                "personId": 109,
+                "created": ago(10),
+                "isIncoming": 0,
+                "outcome": "Interested",
+                "duration": 1500,
+            },
+            {
+                "id": 210,
+                "personId": 109,
+                "created": ago(5),
+                "isIncoming": 0,
+                "outcome": "Left Message",
+                "duration": 25,
+            },
+            {
+                "id": 211,
+                "personId": 110,
+                "created": ago(3),
+                "isIncoming": 0,
+                "outcome": "Interested",
+                "duration": 300,
+            },
+            {
+                "id": 212,
+                "personId": 111,
+                "created": ago(50),
+                "isIncoming": 0,
+                "outcome": "Interested",
+                "duration": 420,
+            },
+            {
+                "id": 213,
+                "personId": 113,
+                "created": ago(3),
+                "isIncoming": 0,
+                "outcome": "Not Interested",
+                "duration": 90,
+            },
+            {
+                "id": 214,
+                "personId": 115,
+                "created": ago(40),
+                "isIncoming": 0,
+                "outcome": "Interested",
+                "duration": 600,
+            },
+            {
+                "id": 215,
+                "personId": 116,
+                "created": ago(3),
+                "isIncoming": 0,
+                "outcome": "Interested",
+                "duration": 480,
+            },
+            {
+                "id": 216,
+                "personId": 117,
+                "created": ago(5),
+                "isIncoming": 0,
+                "outcome": "Interested",
+                "duration": 360,
+            },
+            {
+                "id": 217,
+                "personId": 118,
+                "created": ago(9),
+                "isIncoming": 0,
+                "outcome": "Interested",
+                "duration": 1100,
+            },
+            {
+                "id": 218,
+                "personId": 114,
+                "created": ago(4),
+                "isIncoming": 0,
+                "outcome": "Interested",
+                "duration": 240,
+            },
+            {
+                "id": 219,
+                "personId": 120,
+                "created": ago(4),
+                "isIncoming": 0,
+                "outcome": "Interested",
+                "duration": 300,
+            },
+            {
+                "id": 220,
+                "personId": 104,
+                "created": ago(4),
+                "isIncoming": 0,
+                "outcome": "No Answer",
+                "duration": 0,
+            },
+            {
+                "id": 221,
+                "personId": 104,
+                "created": ago(3),
+                "isIncoming": 0,
+                "outcome": "No Answer",
+                "duration": 0,
+            },
+            {
+                "id": 222,
+                "personId": 121,
+                "created": ago(35),
+                "isIncoming": 0,
+                "outcome": "Interested",
+                "duration": 900,
+            },
+        ]
+        + [
+            {
+                "id": 230 + i,
+                "personId": 112,
+                "created": ago(29 - i * 4),
+                "isIncoming": 0,
+                "outcome": "No Answer",
+                "duration": 0,
+            }
+            for i in range(4)
+        ]
+        + [
+            {
+                "id": 260 + n,
+                "personId": 130 + n,
+                "created": ago(10 + n),
+                "isIncoming": 0,
+                "outcome": "No Answer",
+                "duration": 0,
+            }
+            for n in range(12)
+            if n % 4 == 3
+        ]
+    )
 
     texts: List[Dict[str, Any]] = [
         {
@@ -440,21 +576,21 @@ def build_mock_bundle(as_of: datetime) -> Dict[str, List[Dict[str, Any]]]:
             "personId": 101,
             "created": ago(5),
             "isIncoming": 0,
-            "message": "Great chatting Priya! Here are 4 townhomes in Willoughby that fit — let me know which ones stand out.",
+            "message": "Great chatting Priya! Here are 4 homes in Clayton that fit — let me know which ones stand out.",
         },
         {
             "id": 302,
             "personId": 101,
             "created": ago(hours=18),
             "isIncoming": 1,
-            "message": "Hi Karan, is the end unit on 208 St still available? Could we see it this weekend?",
+            "message": "Hi Karan, is the one on 188 St still available? Could we see it this weekend?",
         },
         {
             "id": 303,
             "personId": 104,
-            "created": ago(3),
+            "created": ago(4),
             "isIncoming": 0,
-            "message": "Hi Daniel, it's Karan — thanks for grabbing the first-time buyer guide. Any questions I can help with?",
+            "message": "Hi Daniel, it's Karan with Nimar Gill's team at Sutton...",
         },
         {
             "id": 304,
@@ -472,25 +608,25 @@ def build_mock_bundle(as_of: datetime) -> Dict[str, List[Dict[str, Any]]]:
         },
         {
             "id": 306,
-            "personId": 111,
-            "created": ago(25),
-            "isIncoming": 0,
-            "message": "Hi Lisa, quick New West market update attached — let me know if you'd like a value estimate on your condo.",
+            "personId": 106,
+            "created": ago(16),
+            "isIncoming": 1,
+            "message": "Maybe something under 1.2M? Will know more after we talk to the bank",
         },
         {
             "id": 307,
-            "personId": 106,
-            "created": ago(6),
-            "isIncoming": 1,
-            "message": "Maybe something under 700k? Will know more after we talk to the bank",
+            "personId": 103,
+            "created": ago(2),
+            "isIncoming": 0,
+            "message": "Hi Maria, it's Karan with Nimar Gill's team at Sutton...",
         },
     ] + [
         {
             "id": 320 + i,
             "personId": 112,
-            "created": ago(18 - i * 2.5),
+            "created": ago(27 - i * 4),
             "isIncoming": 0,
-            "message": "Hi Tom, it's Karan following up on the Maple Ridge townhomes. When's a good time for a quick call?",
+            "message": "Hi Tom, Karan here following up on the Cloverdale homes list.",
         }
         for i in range(3)
     ]
@@ -499,7 +635,7 @@ def build_mock_bundle(as_of: datetime) -> Dict[str, List[Dict[str, Any]]]:
         {
             "id": 401,
             "personId": 101,
-            "name": "Send Priya strata docs for 208 St unit",
+            "name": "Send Priya the disclosure for the 188 St home",
             "type": "Email",
             "dueDate": due(-1),
             "isCompleted": 0,
@@ -515,7 +651,7 @@ def build_mock_bundle(as_of: datetime) -> Dict[str, List[Dict[str, Any]]]:
         {
             "id": 403,
             "personId": 107,
-            "name": "Send Kevin mortgage broker contacts",
+            "name": "Send Kevin mortgage broker contact",
             "type": "Follow Up",
             "dueDate": due(-3),
             "isCompleted": 0,
@@ -523,17 +659,17 @@ def build_mock_bundle(as_of: datetime) -> Dict[str, List[Dict[str, Any]]]:
         {
             "id": 404,
             "personId": 110,
-            "name": "Follow up after Abbotsford showings",
+            "name": "Find acreages with a bigger shop for Mike",
             "type": "Call",
             "dueDate": due(0),
             "isCompleted": 0,
         },
         {
             "id": 405,
-            "personId": 109,
-            "name": "Check new Willoughby listings for Emily",
+            "personId": 118,
+            "name": "Send Raj the Delta truck yard details",
             "type": "Follow Up",
-            "dueDate": due(-1),
+            "dueDate": due(-2),
             "isCompleted": 0,
         },
         {
@@ -555,7 +691,7 @@ def build_mock_bundle(as_of: datetime) -> Dict[str, List[Dict[str, Any]]]:
         {
             "id": 408,
             "personId": None,
-            "name": "Order open house signs for Sunday",
+            "name": "Print open house sign-in QR code",
             "type": "Follow Up",
             "dueDate": due(-1),
             "isCompleted": 0,
@@ -563,7 +699,7 @@ def build_mock_bundle(as_of: datetime) -> Dict[str, List[Dict[str, Any]]]:
         {
             "id": 409,
             "personId": 114,
-            "name": "Confirm subject removal with lender",
+            "name": "Confirm strata docs received",
             "type": "Follow Up",
             "dueDate": due(-1),
             "isCompleted": 0,
@@ -573,15 +709,15 @@ def build_mock_bundle(as_of: datetime) -> Dict[str, List[Dict[str, Any]]]:
     appointments: List[Dict[str, Any]] = [
         {
             "id": 501,
-            "title": "Showing - Maple Ridge acreages",
+            "title": "Showing - South Langley acreages",
             "start": ahead(hours=27),
             "end": ahead(hours=30),
-            "location": "256 St, Maple Ridge",
+            "location": "248 St, Langley",
             "invitees": [{"personId": 105, "name": "Aman Gill"}],
         },
         {
             "id": 502,
-            "title": "Showing - 3 homes in Abbotsford",
+            "title": "Showing - 3 acreages in Aldergrove",
             "start": ago(3, 2),
             "end": ago(3),
             "invitees": [{"personId": 110, "name": "Mike Patel"}],
@@ -595,8 +731,8 @@ def build_mock_bundle(as_of: datetime) -> Dict[str, List[Dict[str, Any]]]:
             "type": "Viewed Property",
             "created": ago(1, 3),
             "property": {
-                "street": "7890 202 St #14",
-                "city": "Langley",
+                "street": "7890 188 St #14",
+                "city": "Surrey",
                 "price": 879000,
             },
         },
@@ -606,8 +742,8 @@ def build_mock_bundle(as_of: datetime) -> Dict[str, List[Dict[str, Any]]]:
             "type": "Saved Property",
             "created": ago(1),
             "property": {
-                "street": "7890 202 St #14",
-                "city": "Langley",
+                "street": "7890 188 St #14",
+                "city": "Surrey",
                 "price": 879000,
             },
         },

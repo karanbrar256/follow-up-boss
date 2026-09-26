@@ -38,6 +38,8 @@ AREAS: Dict[str, str] = {
     "burnaby": "Burnaby",
     "richmond": "Richmond",
     "north delta": "North Delta",
+    "deltaport": "Delta (Deltaport)",
+    "sunshine hills": "Sunshine Hills",
     "tsawwassen": "Tsawwassen",
     "ladner": "Ladner",
     "delta": "Delta",
@@ -68,6 +70,12 @@ AREAS: Dict[str, str] = {
     "agassiz": "Agassiz",
     "harrison": "Harrison",
     "hope": "Hope",
+    "clayton": "Clayton",
+    "port kells": "Port Kells",
+    "glen valley": "Glen Valley",
+    "south langley": "South Langley",
+    "campbell valley": "Campbell Valley",
+    "milner": "Milner",
 }
 
 PROPERTY_TYPES: List[Tuple[str, str]] = [
@@ -77,9 +85,24 @@ PROPERTY_TYPES: List[Tuple[str, str]] = [
     (r"acreages?|\bacres?\b|hobby farm|\bfarm\b", "Acreage"),
     (r"rancher|detached|single[- ]family|\bsfh\b|\bhouse\b", "Detached"),
     (r"triplex|fourplex|4-plex|multi[- ]family|multiplex", "Multi-family"),
-    (r"\bindustrial\b|warehouse", "Industrial"),
+    (r"\bindustrial\b|warehouse|truck (?:yard|parking)", "Industrial"),
     (r"\bcommercial\b|retail unit|office space", "Commercial"),
     (r"\bvacant land\b|building lot|\blot\b(?! of)", "Land / Lot"),
+]
+
+LAND_USES: List[Tuple[str, str]] = [
+    (r"\bfarm(?:ing)?\b|\bbarns?\b|horses?|livestock|blueberr", "Farming"),
+    (
+        r"truck (?:yard|parking)|park(?:ing)? (?:the |their |his )?trucks|room for trucks|equipment",
+        "Trucks / equipment",
+    ),
+    (
+        r"build (?:2|two|a|their|his|her|my|our) (?:houses?|homes?)|custom home|build on",
+        "Build",
+    ),
+    (r"subdivi", "Subdivide (confirm with municipality/ALC)"),
+    (r"income[- ]producing|rental income|lease (?:it )?out|tenants?", "Income"),
+    (r"live on (?:it|the land|the acreage)|family home on", "Live on it"),
 ]
 
 MUST_HAVES: List[Tuple[str, str]] = [
@@ -91,7 +114,7 @@ MUST_HAVES: List[Tuple[str, str]] = [
     (r"\bgarage\b", "Garage"),
     (r"\bshop\b|workshop", "Shop"),
     (r"rv parking|room for (?:an )?rv|\brv\b", "RV parking"),
-    (r"\byard\b|backyard|fenced", "Yard"),
+    (r"(?<!truck )\byard\b|backyard|fenced", "Yard"),
     (r"\bview\b", "View"),
     (r"catchment|close to (?:a )?school|near (?:a )?school", "School catchment"),
     (r"skytrain|transit", "Near transit"),
@@ -141,6 +164,8 @@ QUESTIONS: Dict[str, str] = {
     "situation": "Are you renting right now, or would you need to sell first?",
     "bedrooms": "How many bedrooms do you need?",
     "motivation": "What's prompting the move?",
+    "acres": "Roughly how much land: 1–2 acres, around 5, or 10+?",
+    "land_use": "How will you use the land: live on it, farm, trucks/business, investment?",
 }
 
 
@@ -153,6 +178,8 @@ LABELS: Dict[str, str] = {
     "situation": "current housing",
     "bedrooms": "bedrooms",
     "motivation": "motivation",
+    "acres": "acres",
+    "land_use": "land use",
 }
 
 
@@ -164,10 +191,14 @@ class BuyerCriteria:
     max_price: Optional[int] = None
     bedrooms: Optional[int] = None
     bathrooms: Optional[float] = None
+    min_acres: Optional[float] = None
+    max_acres: Optional[float] = None
+    land_use: List[str] = field(default_factory=list)
     timeline_months: Optional[int] = None
     timeline_label: str = ""
     pre_approved: Optional[bool] = None
     cash_buyer: bool = False
+    down_payment: Optional[int] = None
     situation: List[str] = field(default_factory=list)
     current_areas: List[str] = field(default_factory=list)
     must_haves: List[str] = field(default_factory=list)
@@ -190,6 +221,8 @@ class BuyerCriteria:
     def financing_label(self) -> str:
         if self.cash_buyer:
             return "cash"
+        if self.down_payment and self.pre_approved is None:
+            return f"{fmt_price(self.down_payment)} down"
         if self.pre_approved is True:
             return "pre-approved"
         if self.pre_approved is False:
@@ -207,17 +240,41 @@ class BuyerCriteria:
             gaps.append("budget")
         if self.timeline_months is None:
             gaps.append("timeline")
-        if self.pre_approved is None and not self.cash_buyer:
+        if self.pre_approved is None and not self.cash_buyer and not self.down_payment:
             gaps.append("financing")
         if not self.situation:
             gaps.append("situation")
-        if self.bedrooms is None and not any(
-            t in self.property_types for t in ("Land / Lot", "Commercial", "Industrial")
+        if self.is_land:
+            if self.max_acres is None and self.min_acres is None:
+                gaps.append("acres")
+            if not self.land_use:
+                gaps.append("land_use")
+        elif self.bedrooms is None and not any(
+            t in self.property_types for t in ("Commercial", "Industrial")
         ):
             gaps.append("bedrooms")
         if not self.motivation:
             gaps.append("motivation")
         return gaps
+
+    @property
+    def is_land(self) -> bool:
+        return any(t in self.property_types for t in ("Acreage", "Land / Lot"))
+
+    @property
+    def acres_label(self) -> str:
+        def n(v: float) -> str:
+            return f"{v:g}"
+
+        if self.min_acres and self.max_acres:
+            if self.min_acres == self.max_acres:
+                return f"~{n(self.min_acres)} acres"
+            return f"{n(self.min_acres)}–{n(self.max_acres)} acres"
+        if self.min_acres:
+            return f"{n(self.min_acres)}+ acres"
+        if self.max_acres:
+            return f"up to {n(self.max_acres)} acres"
+        return ""
 
     def missing_labels(self) -> List[str]:
         return [LABELS[m] for m in self.missing()]
@@ -238,6 +295,10 @@ class BuyerCriteria:
             parts.append("/".join(self.property_types))
         if self.areas:
             parts.append(", ".join(self.areas))
+        if self.acres_label:
+            parts.append(self.acres_label)
+        if self.land_use:
+            parts.append("use: " + ", ".join(self.land_use))
         if self.bedrooms:
             parts.append(f"{self.bedrooms}+ bed")
         if self.budget_label:
@@ -278,8 +339,7 @@ def _to_dollars(
 
 def parse_budget(text: str) -> Tuple[Optional[int], Optional[int]]:
     t = text.lower()
-    rng = re.search(rf"(?:between\s+)?{_MONEY}\s*(?:-|–|to|and)\s*{_MONEY}", t)
-    if rng:
+    for rng in re.finditer(rf"(?:between\s+)?{_MONEY}\s*(?:-|–|to|and)\s*{_MONEY}", t):
         hi_unit = rng.group(4)
         lo = _to_dollars(rng.group(1), rng.group(2), hi_unit)
         hi = _to_dollars(rng.group(3), hi_unit, rng.group(2))
@@ -504,6 +564,20 @@ def extract_criteria(lead: Lead, as_of: datetime) -> BuyerCriteria:
         ) or re.search(r"bed(?:room)?s?\??\s*:\s*(\d)", lower)
         if beds:
             c.bedrooms = int(beds.group(1))
+        acres = re.search(
+            r"(\d+(?:\.\d+)?)\s*(?:-|–|to)\s*(\d+(?:\.\d+)?)\s*acres?\b", lower
+        ) or re.search(r"(\d+(?:\.\d+)?)\s*(\+)?\s*acres?\b", lower)
+        if acres:
+            if acres.group(2) and acres.group(2) != "+":
+                c.min_acres, c.max_acres = float(acres.group(1)), float(acres.group(2))
+            elif acres.group(2) == "+":
+                c.min_acres, c.max_acres = float(acres.group(1)), None
+            else:
+                c.min_acres = c.max_acres = float(acres.group(1))
+            cite("acres", when, label, text)
+        for use in _collect(LAND_USES, text):
+            if use not in c.land_use:
+                c.land_use.append(use)
         baths = re.search(r"(\d(?:\.5)?)\s*\+?\s*(?:bath(?:room)?s?|ba)\b", lower)
         if baths:
             c.bathrooms = float(baths.group(1))
@@ -517,6 +591,13 @@ def extract_criteria(lead: Lead, as_of: datetime) -> BuyerCriteria:
             cite("financing", when, label, text)
         if cash:
             c.cash_buyer = True
+        down = re.search(rf"{_MONEY}\s*(?:down|down payment|to put down)\b", lower)
+        if down:
+            amount = _to_dollars(down.group(1), down.group(2))
+            if amount:
+                c.down_payment = amount
+                if c.max_price == amount and c.min_price is None:
+                    c.max_price = None
         for item in _collect(MUST_HAVES, text):
             if item not in c.must_haves:
                 c.must_haves.append(item)

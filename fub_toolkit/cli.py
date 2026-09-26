@@ -3,6 +3,7 @@ Command-line entry point.
 
     python -m fub_toolkit daily                 # morning call sheet (mock data)
     python -m fub_toolkit daily --format csv --out today.csv
+    python -m fub_toolkit daily --day shift         # shift day targets
     python -m fub_toolkit lead 101              # one lead in detail
     python -m fub_toolkit tasks                 # overdue tasks only
     python -m fub_toolkit criteria              # buyer criteria for every lead
@@ -77,13 +78,24 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="Your first name for text drafts",
     )
     parser.add_argument(
-        "--max-people", type=int, default=75, help="Live mode: cap on people fetched"
+        "--max-people", type=int, default=1000, help="Live mode: cap on people fetched"
     )
     sub = parser.add_subparsers(dest="command")
 
     daily = sub.add_parser("daily", help="Morning call sheet")
     daily.add_argument("--format", choices=["md", "csv", "json"], default="md")
-    daily.add_argument("--top", type=int, default=20, help="Max leads on the call list")
+    daily.add_argument(
+        "--top",
+        type=int,
+        default=None,
+        help="Max leads per Smart List (default: the list's own daily cap)",
+    )
+    daily.add_argument(
+        "--day",
+        choices=["office", "shift", "minimum"],
+        default=os.getenv("DAY_TYPE", "office"),
+        help="Day type: office (40 dials), shift (15 dials + 30 texts), minimum (called in: 15 dials)",
+    )
     daily.add_argument("--out", help="Write to this file instead of the screen")
 
     lead = sub.add_parser("lead", help="Detail card for one lead")
@@ -104,7 +116,11 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if command == "daily":
         report = build_report(
-            bundle, as_of, agent=args.agent, top=getattr(args, "top", 20)
+            bundle,
+            as_of,
+            agent=args.agent,
+            top=getattr(args, "top", None),
+            day=getattr(args, "day", os.getenv("DAY_TYPE", "office")),
         )
         fmt = getattr(args, "format", "md")
         text = {"md": render_markdown, "csv": render_csv, "json": render_json}[fmt](

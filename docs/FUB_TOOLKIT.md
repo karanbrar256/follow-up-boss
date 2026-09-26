@@ -10,101 +10,91 @@ A morning call sheet built on this repo's Follow Up Boss (FUB) client. It is des
 
 ## What it does
 
-| # | Capability | Where it lives |
+Every morning it reads Follow Up Boss and writes **Karan's Day**: one sheet, in the order you work.
+
+1. **Start here.** People who replied and haven't heard back.
+2. **Overdue tasks.** Clear these first.
+3. **Appointments ahead.**
+4. **Lists 1 → 7**, the same Smart Lists as in FUB, with the same daily limits:
+
+   | List | Stages | Who's due | Daily limit |
+   |---|---|---|---|
+   | 1 New – Call Now | Lead, Attempted Contact, ≤7 days old | Twice a day until reached (Plan A) | All |
+   | 2 Hot | Hot Prospect | Every 2 days | All |
+   | 3 Clients | Appointment Set, Active Client, Active Listing, Under Contract | Every 2–3 days | All |
+   | 4 Unreached | Lead, Attempted Contact, >7 days old | Last try 3+ days ago | 10 (never-contacted, newest first) |
+   | 5 Prospects | Spoke with Customer | Every 14 days | 10 |
+   | 6 Nurture | Nurture | Every 45 days (text N) | 10 texts |
+   | 7 Sphere & Past Clients | Sphere, Past Client | Every 30 days | 10 |
+
+5. **Clean up in FUB.** Do Not Contact, Bad Number, or has a Realtor.
+6. **Scorecard line** for the end of the day.
+
+For each lead, the sheet shows:
+- why they're due today
+- what they want, pulled from notes, including acres and land use for acreage buyers
+- the last 3 touches and any overdue tasks
+- what to ask, the voicemail and the text for **their ad** (Cloverdale Homes or Langley Acreages, taken from your Call Desk)
+- what to update in FUB
+- the next follow-up date
+
+**Day types** (`--day`):
+
+| Day type | Targets | Lists shown |
 |---|---|---|
-| 1 | Ranks leads by who needs follow-up most urgently (with reasons) | `fub_toolkit/engine.py` |
-| 2 | Finds overdue tasks, including tasks with no contact linked | `fub_toolkit/report.py` |
-| 3 | Summarizes recent notes, calls and texts (last 30 days, newest first) | `fub_toolkit/activity.py` |
-| 4 | Extracts buyer criteria, each value with the note it came from | `fub_toolkit/criteria.py` |
-| 5 | Builds the daily call list plus a separate text/email list | `fub_toolkit/report.py` |
-| 6 | Recommends the next action, a text draft and a follow-up date | `fub_toolkit/engine.py` |
+| `office` | 40 dials | All lists |
+| `shift` | 15 dials + 30 texts | All lists |
+| `minimum` (called in) | 15 dials | Lists 1–3 only |
+
+**Plan A** (new leads, days 0–14) comes straight from the Call Desk:
+
+| Day | Step |
+|---|---|
+| 0 | Call + text 1, call again after 5 p.m. |
+| 1 | Call + text 2 |
+| 2 | Email 3 listings |
+| 4 | Call + text 3 |
+| 7 | Text 4 |
+| 10 | Call |
+| 14 | Text 5, then move to Nurture |
+
+All of these rules live in **`fub_toolkit/playbook.py`**. Change a stage, cadence, limit or text there, and the sheet follows.
 
 ## Quick start
 
 ```bash
-# from the repo root
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-python -m fub_toolkit daily                          # this morning's call sheet (mock data)
-python -m fub_toolkit --as-of 2026-09-26 daily       # a fixed date (matches the tests)
-python -m fub_toolkit daily --format csv --out today.csv   # print it or load it into a dialer
-python -m fub_toolkit daily --format json            # for automations
-python -m fub_toolkit lead 101                       # one lead's full card with evidence
-python -m fub_toolkit tasks                          # overdue tasks only
-python -m fub_toolkit criteria                       # extracted criteria for every lead
-python -m fub_toolkit --agent Karan daily            # name used in text drafts (or set AGENT_NAME)
+python -m fub_toolkit daily                          # today's sheet (mock data)
+python -m fub_toolkit daily --day shift              # shift-day version
+python -m fub_toolkit --as-of 2026-09-28 daily       # the sample in docs/sample_daily_report.md
+python -m fub_toolkit daily --format csv --out reports/today.csv
+python -m fub_toolkit lead 118                       # one lead's card, with where each criterion came from
+python -m fub_toolkit tasks                          # overdue tasks
+python -m fub_toolkit criteria                       # criteria for every lead
+
+scripts/morning_run.sh office                        # live, read-only run (see below)
+pytest tests/test_fub_toolkit.py --no-cov -q         # 68 tests
 ```
 
-After `pip install -e .`, `fub-daily` is the same as `python -m fub_toolkit`.
+## Running it every morning (live)
 
-Run the tests:
+The plan is a scheduled cloud run each morning. It:
+1. reads Follow Up Boss (read-only)
+2. builds the sheet
+3. delivers it to you
 
-```bash
-pytest tests/test_fub_toolkit.py --no-cov -q    # toolkit only (62 tests, about 1 second)
-pytest --no-cov -q                               # whole repo (see "Known pre-existing failures")
-```
+It needs two settings in the cloud environment (environment menu → Edit):
 
-## The morning sheet
+1. **Network access:** allow `api.followupboss.com`.
+2. **Environment variable:** `FOLLOW_UP_BOSS_API_KEY`, set to your key from FUB **Admin → API**. Never paste the key into a chat.
 
-Sections, in the order you work them:
+The first live run is a supervised check against FUB. After that, `scripts/morning_run.sh` runs on the schedule.
 
-1. **Call list (ranked).** For each lead: phone number, temperature, score, *why now*, what they want, situation, decision makers, the last 3 touches, overdue tasks, questions still to ask, a text to send if there's no answer, and the next follow-up date.
-2. **Texts & emails.** Appointment confirmations, listing sends, nurture value touches and "move to nurture" messages.
-3. **Overdue tasks**, most overdue first.
-4. **Upcoming appointments.**
-5. **Clean up in FUB.** Leads that should stop appearing: under contract, working with another agent, do not contact, and so on.
-6. **Not due today**, with each lead's next step and date so nothing drops.
-
-The sheet sets targets: finish the call list before 11 a.m., reach conversations with 40% of the list (an assumption; tune it to your own contact rate), and set at least one appointment.
-
-## How ranking works
-
-Each lead gets points, and every point comes with a reason string that you see on the sheet. The weights are in `engine.WEIGHTS`.
-
-| Signal | Points |
-|---|---|
-| Lead replied or called in and hasn't heard back | +100 |
-| New lead (≤7 days old), never contacted | +90 (+10 if under 24h) |
-| Older lead, never contacted | +60 |
-| Appointment in the next 48h | +40 |
-| Overdue tasks | +12 each (max 3) + up to 15 for age |
-| Tasks due today | +8 each (max 2) |
-| Follow-up due by cadence | +25, +3 per day late (max +20) |
-| Viewed/saved a property in the last 3 days (7 days) | +20 (+10) |
-| Timeline ≤3 months (≤6 months) | +20 (+10) |
-| Pre-approved or cash | +10 |
-| "Just browsing" or "not interested" mentioned | −15 |
-| 6+ attempts and never reached | −20 |
-
-**Temperature:**
-- **Hot:** a hot stage, timeline ≤3 months, just replied, appointment booked, repeated property views, or pre-approved with timeline ≤6 months.
-- **Nurture:** a nurture stage, timeline >6 months, "just browsing", or unreachable after 6 attempts.
-- **Sphere:** past clients.
-- **Warm:** everything else.
-
-**Cadence** (days between touches after a conversation): Hot 2 · Warm 4 · Nurture 21 · Sphere 90.
-
-For leads you have never reached, the gap between attempts is 1 day for attempts 1–3 and 3 days for attempts 4–6. After that the lead is moved to nurture.
-
-## Next-action decision tree
-
-The first rule that matches wins:
-
-1. They replied → **Reply now** (call; text if no answer).
-2. Appointment within 48h → **Confirm appointment**.
-3. Never contacted → **Speed to lead** (call twice, then text referencing the ad).
-4. Never reached, fewer than 6 attempts → **Contact attempt #n**. The text angle changes with each attempt: follow-up, then a listings offer, then "still looking?".
-5. Never reached after 6 attempts → **Move to long-term nurture** (a "break-up" text, plus a stage change).
-6. Past client → **Referral check-in**.
-7. Nurture → **Send something of value** (listings or a market snapshot from the current FVREB/GVR report).
-8. Criteria incomplete → **Qualification call**, using the 3 most important missing questions.
-9. Buying within 6 months, not pre-approved → **Offer a mortgage broker intro**.
-10. No listings sent → **Set up alert + send 3 hand-picked listings**.
-11. Showing done → **Showing debrief + next step** (next showing or buyer consultation).
-12. Otherwise → **Book a showing**, naming the property they viewed if known.
-
-Leads with the stage Closed, Trash or Pending, a `DNC` / `Do Not Contact` tag, or notes saying *working with another agent*, *already bought*, *do not contact* or *wrong number* are taken off the lists. They appear under **Clean up in FUB** instead.
+**Load and rate limits:**
+- Trash and Closed leads are skipped when fetching history.
+- For about 515 leads, a run makes roughly 2,000 read requests at a steady pace, with automatic back-off if FUB rate-limits.
 
 ## Criteria extraction
 
@@ -131,7 +121,7 @@ This is rule-based. It will miss unusual phrasing, so check the notes before quo
 
 | `--source` | What it does |
 |---|---|
-| `mock` (default) | 17 fictional leads covering every recommendation path. Dates are relative to `--as-of`. |
+| `mock` (default) | 33 fictional leads shaped like your account (same stages, ad tags, acreage/industrial buyers, an unreached pile). Dates are relative to `--as-of`. |
 | `file --file bundle.json` | A saved bundle shaped like `{"people": [], "tasks": [], "notes": [], "calls": [], "textMessages": [], "appointments": [], "events": []}` |
 | `live` | Follow Up Boss API, **GET only**. Blocked unless `FUB_TOOLKIT_ALLOW_LIVE=1` is set. |
 

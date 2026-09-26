@@ -13,6 +13,7 @@ from typing import Any, Dict, List
 
 import pytest
 
+from fub_toolkit import playbook as pb
 from fub_toolkit.cli import main
 from fub_toolkit.criteria import (
     extract_criteria,
@@ -22,7 +23,7 @@ from fub_toolkit.criteria import (
     parse_financing,
     parse_timeline,
 )
-from fub_toolkit.engine import build_insight, rank
+from fub_toolkit.engine import build_insight
 from fub_toolkit.mock_data import build_mock_bundle
 from fub_toolkit.models import (
     LOCAL_TZ,
@@ -235,97 +236,145 @@ class TestCriteria:
         assert fmt_price(2_000_000) == "$2M"
 
 
-# --------------------------------------------------------------- engine
+# --------------------------------------------------------------- playbook & engine
+
+
+class TestPlaybook:
+    def test_campaign_from_facebook_tags(self) -> None:
+        assert (
+            pb.campaign_for(["2.5M Langley Acreages-copy"], "Facebook").key == "acreage"
+        )
+        assert (
+            pb.campaign_for(["1.5M Langley Homes-copy-copy"], "Facebook").key == "homes"
+        )
+        assert pb.campaign_for([], "Referral").key == "general"
+
+    def test_plan_a_steps(self) -> None:
+        assert pb.plan_a_step(0)[1] == "1"
+        assert pb.plan_a_step(1)[1] == "2"
+        assert pb.plan_a_step(3)[1] == "email"
+        assert pb.plan_a_step(5)[1] == "3"
+        assert pb.plan_a_step(14)[1] == "5"
+
+    def test_texts_introduce_the_team(self) -> None:
+        for campaign in pb.CAMPAIGNS.values():
+            assert "Nimar Gill's team at Sutton" in campaign.texts["1"]
+
+    def test_fill_keeps_unknown_placeholders(self) -> None:
+        assert (
+            pb.fill("A {listing} in {area}", area="Clayton") == "A {listing} in Clayton"
+        )
 
 
 class TestEngine:
-    def test_unanswered_reply_ranks_first(self, report) -> None:  # type: ignore[no-untyped-def]
-        assert report.call_list[0].lead.name == "Priya Sandhu"
-        assert report.call_list[0].action.code == "reply_now"
+    def test_reply_now_comes_first(self, report) -> None:  # type: ignore[no-untyped-def]
+        assert report.worklist[0].lead.name == "Priya Sandhu"
+        assert report.worklist[0].action.code == "reply_now"
 
-    def test_new_leads_are_speed_to_lead(self, report) -> None:  # type: ignore[no-untyped-def]
-        for name in ("Jason Tran", "Maria Gonzalez"):
-            i = by_name(report, name)
-            assert i.action.code == "speed_to_lead" and i.on_call_list
-        names = [i.lead.name for i in report.call_list]
-        assert names.index("Jason Tran") < names.index(
-            "Maria Gonzalez"
-        )  # newer + shorter timeline first
+    def test_leads_land_in_the_right_smart_list(self, report) -> None:  # type: ignore[no-untyped-def]
+        expected = {
+            "Jason Tran": 1,
+            "Maria Gonzalez": 1,
+            "Kevin O'Brien": 2,
+            "Raj Bains": 2,
+            "Aman Gill": 3,
+            "Chris Lee": 3,
+            "Pam Grewal": 3,
+            "Tom Anderson": 4,
+            "Unreached1 Lead": 4,
+            "Sarah Thompson": 5,
+            "Lisa Wong": 6,
+            "Grace Nguyen": 7,
+            "Jas Toor": 7,
+        }
+        assert {name: by_name(report, name).smart_list for name in expected} == expected
 
     def test_recommendation_paths(self, report) -> None:  # type: ignore[no-untyped-def]
         expected = {
-            "Daniel Kim": "attempt_contact",
+            "Jason Tran": "plan_a",
+            "Maria Gonzalez": "plan_a",
+            "Daniel Kim": "plan_a",
+            "Unreached1 Lead": "first_contact",
+            "Unreached4 Lead": "unreached_retry",
+            "Tom Anderson": "close_loop",
             "Aman Gill": "confirm_appointment",
             "Sarah Thompson": "qualify",
             "Kevin O'Brien": "broker_intro",
             "Harpreet Dhillon": "send_listings",
             "Emily Chen": "book_showing",
             "Mike Patel": "showing_follow_up",
+            "Chris Lee": "deal_check_in",
+            "Pam Grewal": "seller_update",
             "Lisa Wong": "nurture_value",
-            "Tom Anderson": "move_to_nurture",
             "Grace Nguyen": "referral_touch",
             "Rachel Martin": "update_crm",
-            "Chris Lee": "update_crm",
+            "Alyn Brooks": "update_crm",
         }
         actual = {name: by_name(report, name).action.code for name in expected}
         assert actual == expected
 
-    def test_exclusions(self, report) -> None:  # type: ignore[no-untyped-def]
-        assert "another agent" in by_name(report, "Rachel Martin").excluded_reason
-        assert "Under contract" in by_name(report, "Chris Lee").excluded_reason
-        listed = {i.lead.name for i in report.call_list + report.value_list}
-        assert not {"Rachel Martin", "Chris Lee"} & listed
-        assert all(i.score == 0 for i in report.cleanup)
+    def test_plan_a_uses_the_ad_specific_text(self, report) -> None:  # type: ignore[no-untyped-def]
+        jason = by_name(report, "Jason Tran").action
+        assert "day 0" in jason.label and "Cloverdale homes list" in jason.text_draft
+        assert "Cloverdale homes list" in jason.voicemail
+        maria = by_name(report, "Maria Gonzalez").action
+        assert maria.channel == "Email"  # day 2: email 3 listings
 
-    def test_not_due_leads_stay_off_todays_lists(self, report) -> None:  # type: ignore[no-untyped-def]
-        nina = by_name(report, "Nina Kaur")
-        assert not nina.due and nina in report.not_due
+    def test_exclusions(self, report) -> None:  # type: ignore[no-untyped-def]
+        assert "Realtor" in by_name(report, "Rachel Martin").excluded_reason
+        assert "Do Not Contact" in by_name(report, "Alyn Brooks").excluded_reason
+        listed = {i.lead.name for i in report.worklist}
+        assert not {"Rachel Martin", "Alyn Brooks"} & listed
+
+    def test_not_due_leads_stay_off_the_sheet(self, report) -> None:  # type: ignore[no-untyped-def]
+        for name in ("Nina Kaur", "Brandon Singh"):
+            i = by_name(report, name)
+            assert not i.due and i not in report.worklist
+
+    def test_daily_caps(self, report) -> None:  # type: ignore[no-untyped-def]
+        unreached = next(s for s in report.sections if s.smart_list.number == 4)
+        assert len(unreached.items) == 10 and unreached.held_over > 0
+        # never-contacted leads first, newest first
+        assert unreached.items[0].lead.name == "Unreached1 Lead"
 
     def test_temperatures(self, report) -> None:  # type: ignore[no-untyped-def]
         assert by_name(report, "Priya Sandhu").temperature == "Hot"
         assert by_name(report, "Lisa Wong").temperature == "Nurture"
-        assert by_name(report, "Tom Anderson").temperature == "Nurture"
         assert by_name(report, "Grace Nguyen").temperature == "Sphere"
 
-    def test_every_score_has_reasons(self, report) -> None:  # type: ignore[no-untyped-def]
-        for i in report.call_list:
-            assert i.score > 0 and i.reasons
+    def test_every_listed_lead_has_a_reason_and_date(self, report) -> None:  # type: ignore[no-untyped-def]
+        for i in report.worklist:
+            assert i.reasons or i.action.why
+            assert i.action.follow_up is not None
 
-    def test_every_active_lead_has_next_step_and_date(self, report) -> None:  # type: ignore[no-untyped-def]
-        for i in report.insights:
-            if not i.excluded_reason:
-                assert i.action.label and i.action.follow_up is not None
+    def test_land_buyer_criteria(self, report) -> None:  # type: ignore[no-untyped-def]
+        raj = by_name(report, "Raj Bains").criteria
+        assert (raj.min_price, raj.max_price) == (5_000_000, 7_000_000)
+        assert raj.acres_label == "20–40 acres" and raj.down_payment == 3_000_000
+        assert "Income" in raj.land_use and "Yard" not in raj.must_haves
+        mike = by_name(report, "Mike Patel").criteria
+        assert mike.acres_label == "~5 acres"  # "3 acreages" is not "3 acres"
 
-    def test_rank_is_sorted_by_score(self, report) -> None:  # type: ignore[no-untyped-def]
-        scores = [i.score for i in report.insights]
-        assert scores == sorted(scores, reverse=True)
+    def test_zero_to_three_month_tag_sets_timeline(self) -> None:
+        i = build_insight(make_lead(tags=["0-3mo"]), AS_OF)
+        assert i.criteria.timeline_months == 3
 
-    def test_uncontacted_new_lead_beats_routine_follow_up(self) -> None:
-        new = make_lead(id=1, created=(AS_OF - timedelta(hours=2)).isoformat())
-        old = make_lead(id=2)
-        old.interactions.append(
-            Interaction(
-                "call",
-                2,
-                False,
-                AS_OF - timedelta(days=9),
-                outcome="Interested",
-                duration=300,
-            )
-        )
-        ranked = rank([build_insight(old, AS_OF), build_insight(new, AS_OF)])
-        assert ranked[0].lead.id == 1
+    def test_unknown_stage_does_not_crash(self) -> None:
+        i = build_insight(make_lead(stage="Something Custom"), AS_OF)
+        assert i.action.code
 
-    def test_do_not_contact_tag_excludes(self) -> None:
-        i = build_insight(make_lead(tags=["DNC"]), AS_OF)
-        assert i.excluded_reason and not i.on_call_list
+    def test_no_placeholder_leaks_except_listing_details(self, report) -> None:  # type: ignore[no-untyped-def]
+        allowed = {"{listing}", "{area}", "{price}"}
+        import re as _re
 
-    def test_drafts_use_agent_name_and_no_placeholders(self, report) -> None:  # type: ignore[no-untyped-def]
-        for i in report.call_list + report.value_list:
-            assert "{" not in i.action.text_draft
-        assert "Karan" in by_name(report, "Jason Tran").action.text_draft
-        custom = build_report(build_mock_bundle(AS_OF), AS_OF, agent="Alex")
-        assert "Alex" in by_name(custom, "Jason Tran").action.text_draft
+        for i in report.worklist:
+            left = set(_re.findall(r"\{\w+\}", i.action.text_draft))
+            assert left <= allowed, (i.lead.name, left)
+
+    def test_minimum_day_only_lists_1_to_3(self, bundle) -> None:  # type: ignore[no-untyped-def]
+        r = build_report(bundle, AS_OF, day="minimum")
+        assert [s.smart_list.number for s in r.sections] == [1, 2, 3]
+        assert r.day_type.dials == 15
 
 
 # --------------------------------------------------------------- reports
@@ -334,50 +383,58 @@ class TestEngine:
 class TestReports:
     def test_overdue_tasks(self, report) -> None:  # type: ignore[no-untyped-def]
         names = [o.task.name for o in report.overdue]
-        assert names[0] == "Send Kevin mortgage broker contacts"  # most overdue first
-        assert (
-            "Order open house signs for Sunday" in names
-        )  # task with no contact still shown
+        assert names[0] == "Send Kevin mortgage broker contact"
+        assert "Print open house sign-in QR code" in names  # no contact linked
         assert "Home anniversary card" not in names  # completed
-        assert "Send Brandon comparable sales" not in names  # due in future
-        assert [o.days_overdue for o in report.overdue] == sorted(
-            (o.days_overdue for o in report.overdue), reverse=True
-        )
+        assert "Send Brandon comparable sales" not in names  # future
+        days = [o.days_overdue for o in report.overdue]
+        assert days == sorted(days, reverse=True)
 
     def test_notes_summary(self, report) -> None:  # type: ignore[no-untyped-def]
         lines = by_name(report, "Priya Sandhu").activity.summary_lines
         assert lines[0].startswith("Sep 25 · Text in")
         assert len(lines) <= 4
 
-    def test_markdown_sections(self, report) -> None:  # type: ignore[no-untyped-def]
+    def test_markdown_follows_the_day(self, report) -> None:  # type: ignore[no-untyped-def]
         md = render_markdown(report)
-        for heading in (
-            "Daily Call Sheet",
-            "1. Call list",
-            "2. Texts & emails",
-            "3. Overdue tasks",
-            "4. Upcoming appointments",
-            "5. Clean up",
-        ):
-            assert heading in md
-        assert "Saturday, September 26, 2026" in md
+        order = [
+            "Start here",
+            "Overdue tasks",
+            "Appointments ahead",
+            "List 1 ·",
+            "List 2 ·",
+            "List 3 ·",
+            "List 4 ·",
+            "List 5 ·",
+            "List 6 ·",
+            "List 7 ·",
+            "Clean up in FUB",
+            "Scorecard",
+        ]
+        positions = [md.index(h) for h in order]
+        assert positions == sorted(positions)
+        assert "Office day" in md and "40 dials" in md
+        assert "Weekend" in md  # Sep 26, 2026 is a Saturday
+        assert "Scripts for this list" in md and "Hi {name}," in md
 
-    def test_csv_is_valid_and_ranked(self, report) -> None:  # type: ignore[no-untyped-def]
+    def test_csv_is_valid_and_in_order(self, report) -> None:  # type: ignore[no-untyped-def]
         rows = list(csv.DictReader(io.StringIO(render_csv(report))))
-        assert len(rows) == len(report.call_list) + len(report.value_list)
-        assert rows[0]["name"] == "Priya Sandhu" and rows[0]["rank"] == "1"
+        assert len(rows) == len(report.worklist)
+        assert (
+            rows[0]["name"] == "Priya Sandhu" and rows[0]["smart_list"] == "Reply now"
+        )
         assert all(r["next_follow_up"] for r in rows)
 
     def test_json_round_trip(self, report) -> None:  # type: ignore[no-untyped-def]
         data = json.loads(render_json(report))
-        assert data["call_list"][0] == 101
-        priya = next(x for x in data["leads"] if x["id"] == 101)
-        assert priya["criteria"]["max_price"] == 950_000
-        assert priya["next_action"]["code"] == "reply_now"
+        assert data["worklist"][0] == 101
+        raj = next(x for x in data["leads"] if x["id"] == 118)
+        assert raj["criteria"]["acres"] == "20–40 acres"
 
     def test_lead_card_shows_evidence(self, report) -> None:  # type: ignore[no-untyped-def]
         card = render_lead_card(by_name(report, "Kevin O'Brien"), AS_OF)
-        assert "Where the criteria came from" in card and "Coquitlam" in card
+        assert "Where the criteria came from" in card and "Clayton" in card
+        assert "Smart List 2" in card
 
 
 # --------------------------------------------------------------- sources & safety
@@ -466,7 +523,7 @@ class TestCli:
             )
             == 0
         )
-        assert out.read_text().startswith("rank,name,phone")
+        assert out.read_text().startswith("order,smart_list,name,phone")
 
     def test_lead_tasks_criteria_commands(self, capsys) -> None:  # type: ignore[no-untyped-def]
         assert main(["--as-of", "2026-09-26", "lead", "107"]) == 0

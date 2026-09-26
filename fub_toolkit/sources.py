@@ -100,10 +100,10 @@ class LiveReadOnlySource:
     def __init__(
         self,
         client: Any = None,
-        max_people: int = 75,
+        max_people: int = 1000,
         page_size: int = 100,
-        max_pages: int = 5,
-        per_request_pause: float = 0.1,
+        max_pages: int = 20,
+        per_request_pause: float = 0.2,
         env: Optional[Dict[str, str]] = None,
     ) -> None:
         env = dict(os.environ if env is None else env)
@@ -120,9 +120,24 @@ class LiveReadOnlySource:
         self.max_pages = max_pages
         self.pause = per_request_pause
 
+    def _with_backoff(self, fn: Callable[[], Dict[str, Any]]) -> Dict[str, Any]:
+        """Call ``fn``; on a rate-limit (429) wait and retry up to 3 times."""
+        from follow_up_boss.client import FollowUpBossRateLimitError
+
+        for attempt in range(4):
+            time.sleep(self.pause)
+            try:
+                return fn()
+            except FollowUpBossRateLimitError:
+                if attempt == 3:
+                    raise
+                time.sleep(10 * (attempt + 1))
+        return {}  # pragma: no cover
+
     def _get(self, endpoint: str, params: Dict[str, Any]) -> Dict[str, Any]:
-        time.sleep(self.pause)
-        response: Dict[str, Any] = self.client._get(endpoint, params=params)
+        response: Dict[str, Any] = self._with_backoff(
+            lambda: self.client._get(endpoint, params=params)
+        )
         return response
 
     def _paged(
@@ -135,8 +150,7 @@ class LiveReadOnlySource:
             next_link = (response.get("_metadata") or {}).get("nextLink")
             if len(out) >= limit or not next_link:
                 break
-            time.sleep(self.pause)
-            response = self.client.get_absolute(next_link)
+            response = self._with_backoff(lambda: self.client.get_absolute(next_link))
         return out[:limit]
 
     def load(self) -> Bundle:
@@ -149,10 +163,12 @@ class LiveReadOnlySource:
         bundle["appointments"] = self._paged(
             "appointments", "appointments", {}, self.page_size
         )
+        from .playbook import EXCLUDED_STAGES
+
         for person in people:
             pid = person.get("id")
-            if pid is None:
-                continue
+            if pid is None or str(person.get("stage", "")).lower() in EXCLUDED_STAGES:
+                continue  # Trash/Closed: no need to pull their history
             for endpoint, key in (
                 ("notes", "notes"),
                 ("calls", "calls"),

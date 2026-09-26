@@ -44,6 +44,7 @@ class ActivitySnapshot:
     last_appointment: Optional[Appointment] = None
     recent_property_events: List[PropertyEvent] = field(default_factory=list)
     summary_lines: List[str] = field(default_factory=list)
+    outbound_times: List[datetime] = field(default_factory=list)
 
     @property
     def ever_contacted(self) -> bool:
@@ -146,6 +147,7 @@ def analyze_activity(
 
     snap.conversations = len(conversation_times)
     snap.last_conversation = max(conversation_times) if conversation_times else None
+    snap.outbound_times = sorted(outbound_times)
     snap.last_outbound = max(outbound_times) if outbound_times else None
     snap.attempts_since_conversation = sum(
         1
