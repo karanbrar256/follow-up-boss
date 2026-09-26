@@ -46,6 +46,25 @@ X_SYSTEM = os.getenv("X_SYSTEM")  # System identifier for rate limit benefits
 X_SYSTEM_KEY = os.getenv("X_SYSTEM_KEY")  # System key for enhanced API access
 
 
+_SENSITIVE_HEADERS = {"x-system-key", "authorization"}
+
+
+def _debug_enabled() -> bool:
+    """Return True when verbose request/response logging is explicitly enabled.
+
+    Set ``FOLLOW_UP_BOSS_DEBUG=1`` to print requests and responses. It is off by
+    default because responses contain client personal information.
+    """
+    return os.getenv("FOLLOW_UP_BOSS_DEBUG", "").strip().lower() in {"1", "true", "yes"}
+
+
+def _redact_headers(headers: Dict[str, str]) -> Dict[str, str]:
+    """Return a copy of ``headers`` with secret values masked for logging."""
+    return {
+        k: ("***" if k.lower() in _SENSITIVE_HEADERS else v) for k, v in headers.items()
+    }
+
+
 class FollowUpBossApiException(Exception):
     """
     Custom exception for API-related errors.
@@ -298,16 +317,18 @@ class FollowUpBossApiClient:
         if files:
             headers.pop("Content-Type", None)
 
-        # Debug output for request (useful for troubleshooting API issues)
-        # TODO: Consider making this configurable via environment variable or parameter
-        print(f"\n=== API Request ===")
-        print(f"Method: {method}")
-        print(f"URL: {url}")
-        print(f"Headers: {headers}")
-        print(f"Params: {params}")
-        print(f"JSON: {json}")
-        print(f"Data: {data}")
-        print(f"Files: {files}")
+        # Debug output is opt-in: responses contain client PII (names, phones, notes)
+        # and headers contain the X-System-Key, so never print them by default.
+        debug = _debug_enabled()
+        if debug:
+            print(f"\n=== API Request ===")
+            print(f"Method: {method}")
+            print(f"URL: {url}")
+            print(f"Headers: {_redact_headers(headers)}")
+            print(f"Params: {params}")
+            print(f"JSON: {json}")
+            print(f"Data: {data}")
+            print(f"Files: {files}")
 
         try:
             response = requests.request(
@@ -322,17 +343,16 @@ class FollowUpBossApiClient:
                 timeout=30,  # Adding a timeout for requests
             )
 
-            # Debug output for response (helps with API troubleshooting and development)
-            # TODO: Consider making this configurable via environment variable or parameter
-            print(f"\n=== API Response ===")
-            print(f"Status: {response.status_code}")
-            print(f"Headers: {dict(response.headers)}")
-            try:
-                # Attempt to parse and display JSON response for structured data
-                print(f"Response JSON: {response.json()}")
-            except Exception:
-                # Fall back to raw text for non-JSON responses or parsing errors
-                print(f"Response Text: {response.text}")
+            if debug:
+                print(f"\n=== API Response ===")
+                print(f"Status: {response.status_code}")
+                print(f"Headers: {dict(response.headers)}")
+                try:
+                    # Attempt to parse and display JSON response for structured data
+                    print(f"Response JSON: {response.json()}")
+                except Exception:
+                    # Fall back to raw text for non-JSON responses or parsing errors
+                    print(f"Response Text: {response.text}")
 
             # Capture rate limit metadata for programmatic access
             self._last_rate_limit = self._extract_rate_limit_info(response)
@@ -345,8 +365,9 @@ class FollowUpBossApiClient:
                 error_content = http_err.response.content.decode(
                     "utf-8", errors="replace"
                 )
-                print(f"{error_message}")
-                print(f"Response content: {error_content}")
+                if debug:
+                    print(f"{error_message}")
+                    print(f"Response content: {error_content}")
 
                 # Try to parse JSON error response if available
                 try:

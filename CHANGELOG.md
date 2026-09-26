@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- `fub_toolkit`: daily lead follow-up prototype (urgency ranking, overdue tasks, note summaries, buyer-criteria extraction, call list, next-action recommendations) with mock data, CLI (`python -m fub_toolkit` / `fub-daily`) and docs in `docs/FUB_TOOLKIT.md`.
+- Read-only FUB client wrapper that blocks POST/PUT/DELETE; live access requires `FUB_TOOLKIT_ALLOW_LIVE=1`.
+
+### Security
+- `FollowUpBossApiClient` no longer prints request/response bodies and headers by default (they contain client PII and the `X-System-Key`). Opt in with `FOLLOW_UP_BOSS_DEBUG=1`; the key is masked.
+
 ## [0.4.0] - 2024-10-30
 
 ### Fixed

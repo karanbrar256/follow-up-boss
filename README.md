@@ -12,6 +12,16 @@ A comprehensive Python client library for the Follow Up Boss API, providing easy
 - **Error Handling**: Robust error handling and validation
 - **Extensible**: Easy to extend for custom use cases
 
+## Daily Lead Follow-Up Toolkit (prototype)
+
+`fub_toolkit` turns FUB data into a ranked morning call sheet: who to call first, overdue tasks, recent-note summaries, extracted buyer criteria and a recommended next action for each lead. It runs on mock data by default; live access is read-only and opt-in.
+
+```bash
+python -m fub_toolkit daily
+```
+
+See [docs/FUB_TOOLKIT.md](docs/FUB_TOOLKIT.md) for usage and the checklist to complete before connecting a live account.
+
 ## Installation
 
 ```bash
@@ -58,6 +68,8 @@ client.people.delete(person_id)
 ```
 
 ## Environment Variables
+
+Set `FOLLOW_UP_BOSS_DEBUG=1` to print requests and responses while troubleshooting. It is off by default because responses contain client personal information; the `X-System-Key` header is masked either way.
 
 You can also configure the client using environment variables:
 

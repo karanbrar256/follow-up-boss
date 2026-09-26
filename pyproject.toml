@@ -51,6 +51,7 @@ mcp = [
 
 [project.scripts]
 follow-up-boss-mcp = "follow_up_boss.mcp_server:main"
+fub-daily = "fub_toolkit.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/theperrygroup/follow-up-boss"
@@ -59,7 +60,7 @@ Documentation = "https://github.com/theperrygroup/follow-up-boss#readme"
 "Bug Tracker" = "https://github.com/theperrygroup/follow-up-boss/issues"
 
 [tool.setuptools.packages.find]
-include = ["follow_up_boss*"]
+include = ["follow_up_boss*", "fub_toolkit*"]
 exclude = ["tests*"]
 
 [tool.black]

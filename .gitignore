@@ -137,3 +137,8 @@ Thumbs.db
 
 # Cursor
 .cursor/
+
+# fub_toolkit: reports and data exports contain client personal information
+reports/
+*_bundle*.json
+fub_export*.json
