@@ -18,9 +18,9 @@ from .models import Lead, Task
 
 WEIGHTS: Dict[str, int] = {
     "unanswered_inbound": 100,
-    "new_lead_uncontacted": 90,
-    "new_lead_under_24h_bonus": 10,
-    "old_lead_uncontacted": 40,
+    "new_lead_uncontacted": 30,
+    "new_lead_under_24h_bonus": 5,
+    "old_lead_uncontacted": 15,
     "appointment_within_48h": 40,
     "overdue_task_each": 12,
     "overdue_task_max_days_bonus": 15,
@@ -39,6 +39,45 @@ WEIGHTS: Dict[str, int] = {
 STOP_FLAGS = {"Do not contact", "Bad number", "Already bought"}
 HOT_LISTS = {2, 3}
 PLAN_A_STAGES = {"lead", "attempted contact"}
+
+# Sheet order: replied (0) → clients (1) → hot (2) → new (3) → unreached (4)
+# → prospects (5) → nurture (6) → sphere (7). Keyed by Smart List number.
+TIER_BY_LIST: Dict[int, int] = {3: 1, 2: 2, 1: 3, 4: 4, 5: 5, 6: 6, 7: 7}
+
+
+def buying_signals(
+    c: BuyerCriteria, a: ActivitySnapshot, as_of: datetime
+) -> Tuple[int, List[str]]:
+    """Strength of a lead's buying signals: (points, reasons).
+
+    Used to rank Hot leads: 0–3 month timeline, financing ready, recent
+    engagement, and clear criteria.
+    """
+    points = 0
+    found: List[str] = []
+    if c.timeline_months is not None and c.timeline_months <= 3:
+        points += 3
+        found.append(f"timeline {c.timeline_label}")
+    if c.pre_approved or c.cash_buyer:
+        points += 3
+        found.append(c.financing_label)
+    recent = timedelta(days=7)
+    engaged = []
+    if a.last_inbound and as_of - a.last_inbound <= recent:
+        engaged.append("replied this week")
+    if a.recent_property_events:
+        engaged.append(f"{a.recent_property_events[0].type.lower()} this week")
+    if a.last_conversation and as_of - a.last_conversation <= recent:
+        engaged.append("talked this week")
+    if a.next_appointment is not None:
+        engaged.append("appointment booked")
+    if engaged:
+        points += 2
+        found.append(", ".join(engaged))
+    if c.is_qualified:
+        points += 2
+        found.append("clear criteria")
+    return points, found
 
 
 @dataclass
@@ -69,6 +108,15 @@ class LeadInsight:
     smart_list: int = 0
     campaign: str = ""
     excluded_reason: str = ""
+    buying_signals: List[str] = field(default_factory=list)
+    signal_score: int = 0
+
+    @property
+    def tier(self) -> int:
+        """Karan's priority order for the sheet (lower comes first)."""
+        if self.action.code == "reply_now":
+            return 0
+        return TIER_BY_LIST.get(self.smart_list, 9)
 
     @property
     def active(self) -> bool:
@@ -595,6 +643,7 @@ def build_insight(lead: Lead, as_of: datetime, agent: str = pb.AGENT) -> LeadIns
         action = Action(
             code="update_crm", label="Update stage/tags", channel="CRM", why=excluded
         )
+    signal_points, signals = buying_signals(c, a, as_of)
     return LeadInsight(
         lead=lead,
         criteria=c,
@@ -609,26 +658,29 @@ def build_insight(lead: Lead, as_of: datetime, agent: str = pb.AGENT) -> LeadIns
         smart_list=smart_list,
         campaign=campaign.name,
         excluded_reason=excluded,
+        buying_signals=signals,
+        signal_score=signal_points,
     )
 
 
 def rank(insights: List[LeadInsight]) -> List[LeadInsight]:
-    """Smart List order first (1 → 7), then most urgent within each list."""
+    """Karan's order: replied → clients → hot → new → unreached → the rest.
 
-    def key(i: LeadInsight) -> Tuple[int, int, float]:
-        # Unreached: newest leads first (they're likelier to answer).
-        created = -(i.lead.created.timestamp() if i.lead.created else 0)
-        tiebreak = created if i.smart_list == 4 else -len(i.overdue_tasks)
-        return (-i.score, i.smart_list, tiebreak)
+    Within Hot, strongest buying signals first. Within Unreached, newest
+    leads first (likelier to answer). Elsewhere, most urgent first. Leads
+    flagged for clean-up go last.
+    """
 
-    ordered = sorted(insights, key=key)
-    return sorted(
-        ordered,
-        key=lambda i: (
-            bool(i.excluded_reason),
-            i.smart_list if not i.activity.unanswered_inbound else 0,
-        ),
-    )
+    def key(i: LeadInsight) -> Tuple[bool, int, int, float]:
+        if i.tier == 2:
+            within: Tuple[int, float] = (-i.signal_score, -i.score)
+        elif i.tier == 4:
+            within = (0, -(i.lead.created.timestamp() if i.lead.created else 0))
+        else:
+            within = (-i.score, -len(i.overdue_tasks))
+        return (bool(i.excluded_reason), i.tier, within[0], within[1])
+
+    return sorted(insights, key=key)
 
 
 __all__ = [

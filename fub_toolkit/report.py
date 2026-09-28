@@ -76,6 +76,20 @@ def find_overdue_tasks(
     return sorted(out, key=lambda o: -o.days_overdue)
 
 
+# Karan's priority order: clients → hot → new → unreached → prospects → nurture → sphere
+# (people who replied always come first, in their own section).
+PRIORITY_LISTS = [3, 2, 1, 4, 5, 6, 7]
+SECTION_TITLES = {
+    3: "Active clients — anything due",
+    2: "Hot leads — strongest buying signals first",
+    1: "New leads — contact every one today",
+    4: "Unreached",
+    5: "Prospects",
+    6: "Nurture",
+    7: "Sphere & past clients",
+}
+
+
 def build_report(
     bundle: Bundle,
     as_of: datetime,
@@ -98,7 +112,7 @@ def build_report(
         i for i in insights if i.active and i.action.code == "reply_now"
     ]
     taken = {i.lead.id for i in report.reply_now}
-    lists = [1, 2, 3] if day == "minimum" else list(pb.SMART_LISTS)
+    lists = PRIORITY_LISTS[:3] if day == "minimum" else PRIORITY_LISTS
     for number in lists:
         sl = pb.SMART_LISTS[number]
         due = [
@@ -137,6 +151,10 @@ def _lead_block(n: int, i: LeadInsight, today: date, full: bool = True) -> List[
         "",
         f"- **Why now:** {'; '.join(i.reasons) or act.why}",
     ]
+    if i.tier == 2 and i.buying_signals:
+        lines.append(
+            f"- **Buying signals ({i.signal_score}/10):** {' · '.join(i.buying_signals)}"
+        )
     if act.why and act.why not in i.reasons:
         lines.append(f"- **Context:** {act.why}")
     if i.smart_list != 7 and i.action.code not in {"deal_check_in", "seller_update"}:
@@ -194,37 +212,19 @@ def render_markdown(r: DailyReport) -> str:
 
     n = 0
     if r.reply_now:
-        out += ["## Start here — they replied", ""]
+        out += ["## 1 · Replied — waiting on you", ""]
         for i in r.reply_now:
             n += 1
             out += _lead_block(n, i, today)
 
-    out += ["## Overdue tasks — clear these first", ""]
-    if not r.overdue:
-        out += ["None.", ""]
-    else:
-        out += ["| Days overdue | Task | Contact |", "|---:|---|---|"]
-        out += [
-            f"| {o.days_overdue} | {o.task.name} | {o.lead_name} |" for o in r.overdue
-        ]
-        out.append("")
-
-    out += ["## Appointments ahead", ""]
-    if not r.upcoming:
-        out += ["None booked. Aim to set one today.", ""]
-    for i in r.upcoming:
-        appt = i.activity.next_appointment
-        if appt and appt.start:
-            local = appt.start.astimezone(r.as_of.tzinfo)
-            when = f"{local.strftime('%a %b %d')} {local.hour % 12 or 12}:{local.minute:02d} {'a.m.' if local.hour < 12 else 'p.m.'}"
-            out.append(
-                f"- {when} — **{appt.title}** with {i.lead.name}{' @ ' + appt.location if appt.location else ''}"
-            )
-    out.append("")
-
-    for section in r.sections:
+    for number, section in enumerate(r.sections, start=2):
         sl = section.smart_list
-        out += [f"## List {sl.number} · {sl.name} — {sl.target}", ""]
+        title = SECTION_TITLES.get(sl.number, sl.name)
+        out += [
+            f"## {number} · {title}",
+            f"_FUB Smart List {sl.number} ({sl.name}): {sl.target}_",
+            "",
+        ]
         if not section.items:
             out += ["Nobody due.", ""]
             continue
@@ -236,7 +236,7 @@ def render_markdown(r: DailyReport) -> str:
                 tries = (
                     f"{a.attempts_since_conversation} tries"
                     if a.last_outbound
-                    else "never contacted"
+                    else "not contacted yet"
                 )
                 days = (
                     (today - i.lead.created.astimezone(r.as_of.tzinfo).date()).days
@@ -282,6 +282,34 @@ def render_markdown(r: DailyReport) -> str:
                 f"_+{section.held_over} more due in this list. They roll to tomorrow._",
                 "",
             ]
+
+    out += ["## All overdue tasks", ""]
+    if not r.overdue:
+        out += ["None.", ""]
+    else:
+        out += [
+            "Each person's overdue tasks also appear in their entry above.",
+            "",
+            "| Days overdue | Task | Contact |",
+            "|---:|---|---|",
+        ]
+        out += [
+            f"| {o.days_overdue} | {o.task.name} | {o.lead_name} |" for o in r.overdue
+        ]
+        out.append("")
+
+    out += ["## Appointments ahead", ""]
+    if not r.upcoming:
+        out += ["None booked. Aim to set one today.", ""]
+    for i in r.upcoming:
+        appt = i.activity.next_appointment
+        if appt and appt.start:
+            local = appt.start.astimezone(r.as_of.tzinfo)
+            when = f"{local.strftime('%a %b %d')} {local.hour % 12 or 12}:{local.minute:02d} {'a.m.' if local.hour < 12 else 'p.m.'}"
+            out.append(
+                f"- {when} — **{appt.title}** with {i.lead.name}{' @ ' + appt.location if appt.location else ''}"
+            )
+    out.append("")
 
     if r.cleanup:
         out += ["## Clean up in FUB", ""]

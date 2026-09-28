@@ -104,9 +104,22 @@ def main(argv: Optional[List[str]] = None) -> int:
     sub.add_parser("tasks", help="Overdue tasks")
     sub.add_parser("criteria", help="Extracted buyer criteria for every lead")
 
+    dt = sub.add_parser(
+        "daytype", help="office / shift / minimum from saved Google Calendar events"
+    )
+    dt.add_argument(
+        "--events", required=True, help="JSON file of today's calendar events"
+    )
+
     args = parser.parse_args(argv)
     command = args.command or "daily"
     as_of = _as_of(args.as_of)
+
+    if command == "daytype":
+        from .daytype import day_type_for, load_events
+
+        print(day_type_for(load_events(args.events), as_of.date()))
+        return 0
 
     try:
         bundle = _load(args, as_of)

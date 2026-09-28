@@ -15,6 +15,7 @@ import pytest
 
 from fub_toolkit import playbook as pb
 from fub_toolkit.cli import main
+from fub_toolkit.daytype import day_type_for
 from fub_toolkit.criteria import (
     extract_criteria,
     fmt_price,
@@ -23,7 +24,7 @@ from fub_toolkit.criteria import (
     parse_financing,
     parse_timeline,
 )
-from fub_toolkit.engine import build_insight
+from fub_toolkit.engine import WEIGHTS, build_insight, rank
 from fub_toolkit.mock_data import build_mock_bundle
 from fub_toolkit.models import (
     LOCAL_TZ,
@@ -375,6 +376,61 @@ class TestEngine:
         )
         assert n.body == "Wants 5 acres in Aldergrove"
 
+    def test_priority_order_replied_clients_hot_new_unreached(self, report) -> None:  # type: ignore[no-untyped-def]
+        tiers = [i.tier for i in report.worklist]
+        assert tiers == sorted(tiers)
+        assert tiers[0] == 0  # replied first
+        names = [i.lead.name for i in report.worklist]
+        first_new = min(
+            names.index(i.lead.name) for i in report.worklist if i.smart_list == 1
+        )
+        for i in report.worklist:
+            if i.smart_list in (2, 3):
+                assert names.index(i.lead.name) < first_new
+
+    def test_new_leads_never_outrank_clients_or_hot_even_with_high_points(self) -> None:
+        fresh = make_lead(
+            id=1, created=(AS_OF - timedelta(hours=1)).isoformat(), tags=["0-3mo"]
+        )
+        client = make_lead(id=2, stage="Active Client")
+        client.interactions.append(
+            Interaction(
+                "call",
+                2,
+                False,
+                AS_OF - timedelta(days=5),
+                outcome="Interested",
+                duration=300,
+            )
+        )
+        hot = make_lead(id=3, stage="Hot Prospect")
+        hot.interactions.append(
+            Interaction(
+                "call",
+                3,
+                False,
+                AS_OF - timedelta(days=5),
+                outcome="Interested",
+                duration=300,
+            )
+        )
+        ranked = rank([build_insight(x, AS_OF) for x in (fresh, hot, client)])
+        assert [i.lead.id for i in ranked] == [2, 3, 1]
+
+    def test_new_lead_points_lowered(self) -> None:
+        assert (
+            WEIGHTS["new_lead_uncontacted"] + WEIGHTS["new_lead_under_24h_bonus"]
+            < WEIGHTS["follow_up_due"] + WEIGHTS["timeline_3m"]
+        )
+
+    def test_hot_leads_ranked_by_buying_signals(self, report) -> None:  # type: ignore[no-untyped-def]
+        hot = next(s for s in report.sections if s.smart_list.number == 2).items
+        signals = [i.signal_score for i in hot]
+        assert signals == sorted(signals, reverse=True)
+        top = hot[0]
+        assert top.signal_score >= 8 and top.buying_signals
+        assert "Buying signals" in render_markdown(report)
+
     def test_zero_to_three_month_tag_sets_timeline(self) -> None:
         i = build_insight(make_lead(tags=["0-3mo"]), AS_OF)
         assert i.criteria.timeline_months == 3
@@ -391,9 +447,9 @@ class TestEngine:
             left = set(_re.findall(r"\{\w+\}", i.action.text_draft))
             assert left <= allowed, (i.lead.name, left)
 
-    def test_minimum_day_only_lists_1_to_3(self, bundle) -> None:  # type: ignore[no-untyped-def]
+    def test_minimum_day_keeps_clients_hot_and_new(self, bundle) -> None:  # type: ignore[no-untyped-def]
         r = build_report(bundle, AS_OF, day="minimum")
-        assert [s.smart_list.number for s in r.sections] == [1, 2, 3]
+        assert [s.smart_list.number for s in r.sections] == [3, 2, 1]
         assert r.day_type.dials == 15
 
 
@@ -418,16 +474,16 @@ class TestReports:
     def test_markdown_follows_the_day(self, report) -> None:  # type: ignore[no-untyped-def]
         md = render_markdown(report)
         order = [
-            "Start here",
-            "Overdue tasks",
+            "## 1 · Replied — waiting on you",
+            "## 2 · Active clients",
+            "## 3 · Hot leads",
+            "## 4 · New leads",
+            "## 5 · Unreached",
+            "## 6 · Prospects",
+            "## 7 · Nurture",
+            "## 8 · Sphere",
+            "All overdue tasks",
             "Appointments ahead",
-            "List 1 ·",
-            "List 2 ·",
-            "List 3 ·",
-            "List 4 ·",
-            "List 5 ·",
-            "List 6 ·",
-            "List 7 ·",
             "Clean up in FUB",
             "Scorecard",
         ]
@@ -612,3 +668,64 @@ class TestSdkLogging:
             )._get("people")
         out = capsys.readouterr().out
         assert "API Request" in out and "secret-key" not in out
+
+
+# --------------------------------------------------------------- day type from calendar
+
+
+class TestDayType:
+    TODAY = AS_OF.date()
+
+    def ev(self, summary: str, start: str, created: str) -> Dict[str, Any]:
+        return {"summary": summary, "start": {"dateTime": start}, "created": created}
+
+    def test_no_shift_is_office(self) -> None:
+        events = [self.ev("Gym", "2026-09-26T06:45:00-07:00", "2026-09-01T00:00:00Z")]
+        assert day_type_for(events, self.TODAY) == "office"
+
+    def test_scheduled_bcldb_shift_is_shift(self) -> None:
+        events = [
+            self.ev("BCLDB Shift", "2026-09-26T05:30:00-07:00", "2026-09-19T00:00:00Z")
+        ]
+        assert day_type_for(events, self.TODAY) == "shift"
+
+    def test_called_in_shift_is_minimum(self) -> None:
+        events = [
+            self.ev("BCLDB Shift", "2026-09-26T05:30:00-07:00", "2026-09-25T20:00:00Z")
+        ]
+        assert day_type_for(events, self.TODAY) == "minimum"
+
+    def test_other_days_and_other_titles_ignored(self) -> None:
+        events = [
+            self.ev("BCLDB Shift", "2026-09-27T05:30:00-07:00", "2026-09-01T00:00:00Z"),
+            self.ev(
+                "Wake Up + Leave for Shift",
+                "2026-09-26T04:30:00-07:00",
+                "2026-09-01T00:00:00Z",
+            ),
+            dict(
+                self.ev(
+                    "BCLDB Shift", "2026-09-26T05:30:00-07:00", "2026-09-01T00:00:00Z"
+                ),
+                status="cancelled",
+            ),
+        ]
+        assert day_type_for(events, self.TODAY) == "office"
+
+    def test_cli_reads_calendar_json(self, tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]
+        path = tmp_path / "events.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "events": [
+                        self.ev(
+                            "BCLDB Shift",
+                            "2026-09-26T05:30:00-07:00",
+                            "2026-09-10T00:00:00Z",
+                        )
+                    ]
+                }
+            )
+        )
+        assert main(["--as-of", "2026-09-26", "daytype", "--events", str(path)]) == 0
+        assert capsys.readouterr().out.strip() == "shift"

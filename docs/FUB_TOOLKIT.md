@@ -8,6 +8,24 @@ A morning call sheet built on this repo's Follow Up Boss (FUB) client. It is des
 
 ---
 
+## Sheet order (Karan's priorities)
+
+1. **Replied — waiting on you**
+2. **Active clients** with anything due
+3. **Hot leads**, ranked by buying signals: 0–3 month timeline (+3), pre-approved or cash (+3), engaged this week (+2), clear criteria (+2)
+4. **New leads**, every one, contacted the same day
+5. **Unreached** (10 a day)
+6. **Prospects**, then **Nurture**, then **Sphere & past clients**
+
+Overdue tasks, appointments, clean-up and the scorecard follow. New leads score lower (30 points, +5 if under 24h) and their place in the order is fixed, so they can never outrank clients or hot leads.
+
+**Day type from Google Calendar:**
+- A **"BCLDB Shift"** event today → **shift** day.
+- The shift was added less than 24h before it starts (called in) → **minimum** day, showing only replied, clients, hot and new.
+- Otherwise → **office** day.
+
+`scripts/morning_run.sh auto events.json` or `python -m fub_toolkit daytype --events events.json`.
+
 ## What it does
 
 Every morning it reads Follow Up Boss and writes **Karan's Day**: one sheet, in the order you work.
